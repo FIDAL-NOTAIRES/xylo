@@ -85,7 +85,17 @@ button:focus-visible{outline:2px solid var(--orange);outline-offset:2px}
   grid-template-columns:auto 1fr;gap:3px 12px}
 .risk dt{color:var(--canard);text-transform:uppercase;font-size:10.5px;
   letter-spacing:.5px;padding-top:2px}
-.risk dd{margin:0}
+.risk dd{margin:0;overflow-wrap:anywhere;word-break:break-word;min-width:0}
+.ap-btn{display:inline-flex;align-items:center;gap:5px;background:#EAF2F3;
+  color:#0F5158 !important;text-decoration:none;font-size:11.5px;padding:4px 11px;
+  border-radius:3px;line-height:1.4}
+.ap-btn:hover{background:#D8E8EA}
+.ap-btn svg{width:11px;height:11px;flex:0 0 11px}
+@media print{
+  .ap-btn{background:none;color:var(--nuit) !important;padding:0;gap:4px}
+  .ap-btn::after{content:" " attr(href);font-size:9.5px;color:var(--gris);
+    overflow-wrap:anywhere}
+}
 .risk a{color:var(--canard)}
 .s-carmin{border-left:4px solid var(--carmin)} .d-carmin{background:var(--carmin)}
 .s-orange{border-left:4px solid var(--orange)} .d-orange{background:var(--orange)}
@@ -577,7 +587,12 @@ function riskBlock(title, r){
     '<dl>' +
       '<dt>Arrêté</dt><dd>' + (d.arrete ? esc(d.arrete) : "—") + '</dd>' +
       '<dt>Effet</dt><dd>' + fr(d.effet) + (r.futur ? " — postérieur à ce jour" : "") + '</dd>' +
-      '<dt>Source</dt><dd>' + (d.url ? '<a href="' + esc(d.url) + '">' + esc(d.url) + '</a>' : "—") + '</dd>' +
+      '<dt>Source</dt><dd>' + (d.url
+        ? '<a class="ap-btn" href="' + esc(d.url) + '" target="_blank" rel="noopener">' +
+          '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true">' +
+          '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>' +
+          '<path d="M14 2v6h6"/></svg>Consulter l\'arrêté</a>'
+        : "—") + '</dd>' +
       '<dt>Vérifié</dt><dd>' + (d.verifie ? fr(d.verifie) : "jamais") + '</dd>' +
       (r.note ? '<dt>Observation</dt><dd>' + esc(r.note) + '</dd>' : "") +
     '</dl></div>';
