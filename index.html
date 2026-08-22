@@ -201,6 +201,7 @@ tbody tr:nth-child(even){background:#FAFBFC}
 <div class="bar" id="bar" style="display:none">
   <span id="barTxt"></span>
   <button class="ghost" id="back">Revenir à la saisie</button>
+  <button class="ghost" id="btnArr">Arrêtés (PDF)</button>
   <button id="print">Imprimer / PDF</button>
 </div>
 <div class="wrap" id="sheets"></div>
@@ -688,6 +689,150 @@ document.getElementById("back").addEventListener("click", function(){
   document.getElementById("builder").style.display = "block";
 });
 document.getElementById("print").addEventListener("click", function(){ window.print(); });
+
+/* ---- dossier des arrêtés : collecte, dédoublonnage, relais par
+   arrêté puis fusion DANS le navigateur (plafond 20 Mo) ---- */
+var PLAFOND_DOSSIER = 20 * 1024 * 1024;
+var pdfLibPret = null;
+function chargerPdfLib(){
+  if(window.PDFLib) return Promise.resolve();
+  if(pdfLibPret) return pdfLibPret;
+  pdfLibPret = new Promise(function(ok, ko){
+    var s = document.createElement("script");
+    s.src = "https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js";
+    s.onload = ok;
+    s.onerror = function(){ pdfLibPret = null; ko(new Error("chargement de pdf-lib impossible")); };
+    document.head.appendChild(s);
+  });
+  return pdfLibPret;
+}
+function ansi(s){
+  return String(s || "")
+    .replace(/œ/g,"oe").replace(/Œ/g,"OE")
+    .replace(/[\u2018\u2019]/g,"'").replace(/[\u201C\u201D]/g,'"')
+    .replace(/\u2013|\u2014/g,"-").replace(/\u2026/g,"...");
+}
+function pageGarde(doc, police, policeG, item, nbPages, echec){
+  var PL = window.PDFLib;
+  var NUIT = PL.rgb(0.059,0.133,0.220), CANARD = PL.rgb(0.200,0.514,0.545);
+  var GRIS = PL.rgb(0.541,0.580,0.627), CARMIN = PL.rgb(0.627,0.063,0.251);
+  var p = doc.addPage([595.28, 841.89]), L = 60;
+  p.drawRectangle({ x:0, y:791, width:595.28, height:51, color:NUIT });
+  p.drawText("XYLO - Annexe", { x:L, y:810, size:16, font:policeG, color:PL.rgb(1,1,1) });
+  p.drawText(item.risque === "merule" ? "Mérule" : "Termites",
+    { x:L, y:740, size:22, font:policeG, color:NUIT });
+  p.drawText(ansi(item.reference || "Arrêté préfectoral"),
+    { x:L, y:712, size:14, font:police, color:CANARD });
+  var y = 670;
+  p.drawText("Communes concernées dans ce dossier :", { x:L, y:y, size:11, font:policeG, color:NUIT });
+  y -= 18;
+  item.communes.slice(0, 40).forEach(function(n){
+    p.drawText("- " + ansi(n), { x:L+10, y:y, size:11, font:police, color:NUIT });
+    y -= 15;
+  });
+  if(item.communes.length > 40){
+    p.drawText("... et " + (item.communes.length - 40) + " autres", { x:L+10, y:y, size:11, font:police, color:GRIS });
+    y -= 15;
+  }
+  y -= 10;
+  p.drawText(ansi("Source : " + item.url).slice(0, 110), { x:L, y:y, size:8.5, font:police, color:GRIS });
+  y -= 14;
+  if(echec){
+    p.drawText("Document non joint : " + ansi(echec), { x:L, y:y, size:11, font:policeG, color:CARMIN });
+    y -= 15;
+    p.drawText("Consulter le lien source ci-dessus.", { x:L, y:y, size:10, font:police, color:CARMIN });
+  } else {
+    p.drawText(nbPages + (nbPages > 1 ? " pages suivent." : " page suit."), { x:L, y:y, size:10, font:police, color:GRIS });
+  }
+  p.drawText("Feuille de travail FIDAL Notaires Paris - l'arrêté préfectoral seul est opposable.",
+    { x:L, y:40, size:8.5, font:police, color:GRIS });
+}
+document.getElementById("btnArr").addEventListener("click", function(){
+  var btn = this;
+  if(location.protocol === "file:"){
+    alert("La constitution du dossier d'arrêtés n'est disponible que sur l'URL de production (le relais des PDF passe par le serveur).");
+    return;
+  }
+  var parCle = {};
+  communes.forEach(function(c){
+    [wantT() ? "termite" : null, wantM() ? "merule" : null].forEach(function(rq){
+      if(!rq) return;
+      var r = resolve(c.insee, rq);
+      var u = r.data && r.data.url;
+      if(!u) return;
+      var cle = rq + "|" + u;
+      if(!parCle[cle]){
+        parCle[cle] = { url:u, reference:(r.data.arrete || ""), risque:rq, communes:[] };
+      }
+      if(parCle[cle].communes.indexOf(c.nom) < 0) parCle[cle].communes.push(c.nom);
+    });
+  });
+  var items = Object.keys(parCle).map(function(k){ return parCle[k]; });
+  if(!items.length){
+    alert("Aucun arrêté à joindre : les communes affichées sont hors zone classée ou sans lien d'arrêté.");
+    return;
+  }
+  btn.disabled = true;
+  var libelle = btn.textContent;
+  function etat(t){ btn.textContent = t; }
+  function fini(){ btn.disabled = false; btn.textContent = libelle; }
+
+  chargerPdfLib().then(function(){
+    var PL = window.PDFLib;
+    return PL.PDFDocument.create().then(function(doc){
+      return Promise.all([
+        doc.embedFont(PL.StandardFonts.Helvetica),
+        doc.embedFont(PL.StandardFonts.HelveticaBold)
+      ]).then(function(polices){
+        var poids = 0;
+        var chaine = Promise.resolve();
+        items.forEach(function(it, i){
+          chaine = chaine.then(function(){
+            etat("Arrêté " + (i+1) + "/" + items.length + "…");
+            if(poids > PLAFOND_DOSSIER){
+              pageGarde(doc, polices[0], polices[1], it, 0, "plafond du dossier atteint (20 Mo)");
+              return;
+            }
+            return fetch("api/arrete?u=" + encodeURIComponent(it.url))
+            .then(function(r){
+              if(!r.ok){
+                return r.json().catch(function(){ return {}; }).then(function(j){
+                  pageGarde(doc, polices[0], polices[1], it, 0, j.erreur || ("relais HTTP " + r.status));
+                });
+              }
+              return r.arrayBuffer().then(function(buf){
+                return PL.PDFDocument.load(buf, { ignoreEncryption:true }).then(function(src){
+                  pageGarde(doc, polices[0], polices[1], it, src.getPageCount(), null);
+                  return doc.copyPages(src, src.getPageIndices()).then(function(pages){
+                    pages.forEach(function(pg){ doc.addPage(pg); });
+                    poids += buf.byteLength;
+                  });
+                }).catch(function(e){
+                  pageGarde(doc, polices[0], polices[1], it, 0, "PDF illisible (" + e.message + ")");
+                });
+              });
+            }).catch(function(e){
+              pageGarde(doc, polices[0], polices[1], it, 0, e.message);
+            });
+          });
+        });
+        return chaine.then(function(){
+          etat("Assemblage…");
+          return doc.save();
+        });
+      });
+    });
+  }).then(function(octets){
+    var a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob([octets], { type:"application/pdf" }));
+    a.download = "xylo-arretes.pdf";
+    document.body.appendChild(a); a.click(); a.remove();
+    fini();
+  }).catch(function(e){
+    alert("Échec de la constitution du dossier : " + e.message);
+    fini();
+  });
+});
 document.getElementById("reset").addEventListener("click", function(){
   communes = []; render();
 });
