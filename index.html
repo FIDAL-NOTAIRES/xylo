@@ -221,8 +221,7 @@ var REF = {
   dep:{
     "72":{
       termite:{ statut:"total", arrete:"AP du 12/12/2025",
-        effet:"2026-09-01", source:"prefecture",
-        url:"https://www.sarthe.gouv.fr/", verifie:"2026-08-21",
+        effet:"2026-09-01", source:"prefecture", verifie:"2026-08-21",
         note:"Arrêté couvrant l'intégralité du département, effet différé. Surcharge à retirer après le 01/09/2026." }
     }
   },
@@ -247,8 +246,19 @@ function integrerRef(x){
     Object.keys(x[niv]).forEach(function(code){
       if(!REF[niv][code]) REF[niv][code] = {};
       ["termite","merule"].forEach(function(rq){
-        if(x[niv][code][rq] && !REF[niv][code][rq]){
+        if(!x[niv][code][rq]) return;
+        if(!REF[niv][code][rq]){
           REF[niv][code][rq] = x[niv][code][rq];
+        } else {
+          /* fusion champ par champ : la surcharge manuelle garde ses
+             champs, la moisson comble les champs qu'elle ne porte pas
+             (ex. lien direct vers le PDF de l'arrêté) */
+          var man = REF[niv][code][rq], moi = x[niv][code][rq];
+          Object.keys(moi).forEach(function(k){
+            if(man[k] === undefined || man[k] === null || man[k] === ""){
+              man[k] = moi[k];
+            }
+          });
         }
       });
     });
