@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>Moisson XYLO — Cerema</title>
+<style>
+body{font-family:"Segoe UI",Tahoma,sans-serif;background:#F2F4F6;color:#0F2238;
+  max-width:760px;margin:30px auto;padding:0 16px}
+h1{font-family:Georgia,serif;font-weight:normal;font-size:22px;
+  border-bottom:2px solid #33838B;padding-bottom:8px}
+button{font-family:inherit;font-size:15px;padding:10px 18px;border:none;
+  border-radius:3px;background:#33838B;color:#fff;cursor:pointer}
+button:disabled{background:#8A94A0;cursor:default}
+#log{background:#fff;border:1px solid #D7DDE3;border-radius:3px;padding:14px;
+  margin-top:16px;font-size:13px;white-space:pre-wrap;min-height:120px}
+.ok{color:#33838B}.err{color:#A01040;font-weight:600}
+#dl{margin-top:14px;display:none;gap:10px}
+#dl a{display:inline-block;margin-right:10px;background:#0F2238;color:#fff;
+  padding:10px 16px;border-radius:3px;text-decoration:none;font-size:14px}
+</style>
+</head>
+<body>
+<h1>Moisson XYLO — couches termites &amp; mérule du Cerema</h1>
+<p>Cette page interroge les quatre couches publiques de cartagene.cerema.fr et
+produit le référentiel de XYLO. Aucune installation requise. Comptez une à trois minutes.</p>
+<button id="go">Lancer la moisson</button>
+<div id="log">Prêt.</div>
+<div id="dl">
+  <a id="dlRef" download="xylo-referentiel.json">Télécharger xylo-referentiel.json</a>
+  <a id="dlVal" download="xylo-valeurs.json">Télécharger xylo-valeurs.json</a>
+</div>
+
+<script>
+"use strict";
+var BASE = "https://cartagene.cerema.fr/server/rest/services/Hosted/";
+var COUCHES = [
+  { service: "departement_termite", risque: "termite", portee: "departement" },
+  { service: "departement_merule",  risque: "merule",  portee: "departement" },
+  { service: "commune_termite",     risque: "termite", portee: "commune" },
+  { service: "commune_merule",      risque: "merule",  portee: "commune" }
+];
+
+var logEl = document.getElementById("log");
+function log(t, cls){
+  var d = document.createElement("div");
+  if(cls) d.className = cls;
+  d.textContent = t;
+  logEl.appendChild(d);
+}
+function ligneMaj(t){
+  var last = logEl.lastChild;
+  if(last && last.dataset && last.dataset.maj){ last.textContent = t; return; }
+  var d = document.createElement("div");
+  d.dataset.maj = "1"; d.textContent = t;
+  logEl.appendChild(d);
+}
+function versISO(s){
+  if(!s) return null;
+  s = String(s).trim();
+  var m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if(m) return m[1]+"-"+m[2]+"-"+m[3];
+  m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+  if(m) return m[3]+"-"+("0"+m[2]).slice(-2)+"-"+("0"+m[1]).slice(-2);
+  return null;
+}
+
+function couche(svc){
+  return fetch(BASE + svc.service + "/FeatureServer/0?f=json")
+  .then(function(r){ return r.json(); })
+  .then(function(meta){
+    if(!meta || !meta.fields) throw new Error(svc.service + " : métadonnées illisibles");
+    var noms = meta.fields.map(function(f){ return f.name.toLowerCase(); });
+    var pas = meta.maxRecordCount || 2000;
+    function champ(cands){
+      for(var i=0;i<cands.length;i++){
+        var j = noms.indexOf(cands[i]);
+        if(j>=0) return meta.fields[j].name;
+      }
+      return null;
+    }
+    var F = {
+      flag:  champ([svc.risque,"termite","merule","classement","statut"]),
+      insee: svc.portee==="departement"
+             ? champ(["code_dep","dep","insee_dep","code_insee","code_depar"])
+             : champ(["code_insee","insee","insee_com"]),
+      nom:   champ(["nom_offici","nom","nom_com","nom_dep","libelle"]),
+      lien:  champ(["lien_ap","url_ap","lien","url"]),
+      date:  champ(["date_ap","date_arrete","date"])
+    };
+    if(!F.flag || !F.insee)
+      throw new Error(svc.service + " : champs introuvables (flag="+F.flag+", insee="+F.insee+")");
+
+    var tout = [];
+    function page(offset){
+      var u = BASE + svc.service + "/FeatureServer/0/query"
+            + "?where=1%3D1&outFields=*&returnGeometry=false&f=json"
+            + "&resultOffset=" + offset + "&resultRecordCount=" + pas;
+      return fetch(u).then(function(r){ return r.json(); }).then(function(p){
+        if(p.error) throw new Error(svc.service + " : " + JSON.stringify(p.error));
+        var lots = p.features || [];
+        lots.forEach(function(x){ tout.push(x.attributes); });
+        ligneMaj(svc.service + " : " + tout.length + " entités");
+        if(p.exceededTransferLimit || lots.length >= pas){
+          if(offset > 200000) throw new Error(svc.service + " : pagination suspecte");
+          return page(offset + lots.length);
+        }
+        var d = document.createElement("div");
+        d.className = "ok";
+        d.textContent = svc.service + " : " + tout.length + " entités — terminé";
+        logEl.appendChild(d);
+        return { champs: F, lignes: tout };
+      });
+    }
+    return page(0);
+  });
+}
+
+function principal(){
+  var ref = { meta:{ source:"cerema/cartagene",
+                     moissonne_le:new Date().toISOString().slice(0,10) },
+              dep:{}, com:{} };
+  var valeurs = {}, douteux = [];
+
+  var chaine = Promise.resolve();
+  COUCHES.forEach(function(svc){
+    chaine = chaine.then(function(){ return couche(svc); }).then(function(r){
+      var vus = {}, negatifs = 0;
+      r.lignes.forEach(function(a){
+        var brut = a[r.champs.flag];
+        var cle = String(brut==null ? "(nul)" : brut);
+        vus[cle] = (vus[cle]||0) + 1;
+
+        var code = String(a[r.champs.insee]||"").trim();
+        if(!code) return;
+        if(svc.portee==="departement" && code.length===1) code = "0"+code;
+        if(svc.portee==="commune" && code.length===4) code = "0"+code;
+
+        /* Sémantique constatée (moisson du 22/08/2026) :
+           O = classé (département en totalité / commune entière)
+           P = partiel (département : porté au niveau communal ;
+                        commune : zonage infra-communal, annexe parcellaire)
+           N = non classé, négatif explicite
+           vide = inconnu, gris */
+        var B = String(brut==null?"":brut).trim().toUpperCase();
+        var statut;
+        if(B==="O"){ statut = (svc.portee==="departement") ? "total" : "partiel"; }
+        else if(B==="P"){
+          if(svc.portee==="departement") return;   /* détail porté par la couche communale */
+          statut = "zonage";
+        }
+        else if(B==="N"){ negatifs++; return; }    /* négatif explicite : rien à écrire */
+        else { statut = "verifier"; douteux.push({couche:svc.service, code:code, valeur:brut}); }
+
+        var cible = (svc.portee==="departement") ? ref.dep : ref.com;
+        if(!cible[code]) cible[code] = {};
+        var dISO = versISO(r.champs.date ? a[r.champs.date] : null);
+        cible[code][svc.risque] = {
+          statut: statut,
+          arrete: dISO ? ("AP du "+dISO.split("-").reverse().join("/"))
+                       : (statut==="verifier" ? "" : "AP (date non renseignée)"),
+          date_arrete: dISO,
+          effet: dISO,
+          url: r.champs.lien ? (a[r.champs.lien]||null) : null,
+          nom: r.champs.nom ? (a[r.champs.nom]||null) : null,
+          source: "cerema",
+          verifie: ref.meta.moissonne_le
+        };
+      });
+      valeurs[svc.service] = vus;
+      /* La couche communale couvre toute la France : un négatif y est
+         un vrai « hors zone ». On l'atteste si la couche est bien
+         exhaustive, pour que XYLO puisse afficher le canard. */
+      if(svc.portee==="commune" && r.lignes.length > 30000){
+        if(!ref.meta.exhaustif) ref.meta.exhaustif = {};
+        ref.meta.exhaustif[svc.risque] = true;
+      }
+      void negatifs;
+    });
+  });
+
+  return chaine.then(function(){
+    function blob(o, pretty){
+      return URL.createObjectURL(new Blob(
+        [JSON.stringify(o, null, pretty ? 2 : 0)],
+        { type:"application/json" }));
+    }
+    document.getElementById("dlRef").href = blob(ref, false);
+    document.getElementById("dlVal").href = blob({valeurs:valeurs, douteux:douteux}, true);
+    document.getElementById("dl").style.display = "block";
+    log("Référentiel : " + Object.keys(ref.dep).length + " départements, "
+        + Object.keys(ref.com).length + " communes classées.", "ok");
+    log("Valeurs non arbitrées (classées en gris) : " + douteux.length + ".", "ok");
+    log("Téléchargez les deux fichiers ci-dessous, puis collez le contenu de xylo-valeurs.json dans la conversation.");
+  });
+}
+
+document.getElementById("go").addEventListener("click", function(){
+  this.disabled = true;
+  logEl.innerHTML = "";
+  principal().catch(function(e){
+    log("ÉCHEC : " + e.message, "err");
+    log("Si le message évoque CORS ou Failed to fetch, le serveur refuse les appels depuis une page locale — dites-le-moi, je bascule sur un autre canal.", "err");
+    document.getElementById("go").disabled = false;
+  });
+});
+</script>
+</body>
+</html>
