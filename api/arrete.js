@@ -1,5 +1,5 @@
 /* ============================================================
-   XYLO — /api/arrete  (v2)
+   XYLO — /api/arrete  (v5)
    ------------------------------------------------------------
    Relais d'un PDF d'arrêté préfectoral, la fusion du dossier se
    faisant côté client. Gère deux familles de sources :
@@ -159,6 +159,20 @@ module.exports = async function (req, res) {
     let r = await chercherAvecReprise(url.toString());
     if (r.statut < 200 || r.statut >= 300) {
       return res.status(502).json({ erreur: "source HTTP " + r.statut });
+    }
+
+    /* lien de partage Box : le canal direct /shared/static/{jeton}.pdf
+       sert le fichier sans page ni session — on le tente en premier */
+    if (!estPdf(r.octets) && url.hostname.endsWith(".box.com")) {
+      const nomPartage = (url.pathname.match(/\/s\/([A-Za-z0-9]+)/) || [])[1];
+      if (nomPartage) {
+        try {
+          const direct0 = await chercherAvecReprise(url.origin + "/shared/static/" + nomPartage + ".pdf");
+          if (direct0.statut >= 200 && direct0.statut < 300 && estPdf(direct0.octets)) {
+            r = { statut: 200, octets: direct0.octets, type: "application/pdf", biscuits: r.biscuits };
+          }
+        } catch (e) { /* on passe aux circuits suivants */ }
+      }
     }
 
     /* page de partage Box : second saut vers le fichier lui-même */
