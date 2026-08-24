@@ -34,18 +34,8 @@ let chargeLe = null;
 
 function chargerReferentiel() {
   if (REF) return REF;
-  const base = { meta: { version: "0.3" }, dep: {}, com: {} };
-
-  /* surcharges manuelles : mêmes valeurs que l'interface humaine.
-     À maintenir en cohérence avec index.html — voir mémo § surcharges. */
-  base.dep["72"] = {
-    termite: {
-      statut: "total", arrete: "AP du 12/12/2025", effet: "2026-09-01",
-      source: "prefecture", verifie: "2026-08-22",
-      url: "ap-sarthe-termites-20251212.pdf",
-      note: "Arrêté couvrant l'intégralité du département, effet différé. Copie servie par XYLO, téléchargée sur sarthe.gouv.fr le 22/08/2026. Surcharge à retirer après le 01/09/2026."
-    }
-  };
+  /* surcharges : lues dans le moteur partagé, jamais recopiées ici */
+  const base = moteur.nouveauReferentiel("0.3");
 
   const chemins = [
     path.join(process.cwd(), "xylo-referentiel.json"),
