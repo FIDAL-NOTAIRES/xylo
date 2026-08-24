@@ -1,30 +1,78 @@
 /* ============================================================
-   XYLO — /api/arrete
+   XYLO — /api/arrete  (v2)
    ------------------------------------------------------------
-   Relais d'un PDF d'arrêté préfectoral : les sources (Cerema,
-   préfectures) ne servent pas d'en-têtes CORS, le navigateur ne
-   peut donc pas les lire directement. La fusion du dossier se
-   fait côté client ; ce relais ne transporte qu'UN document par
-   appel, ce qui reste sous la limite de réponse Vercel (~4,5 Mo).
-
-   Entrée : GET /api/arrete?u=<url encodée>
-   Sortie : application/pdf, ou JSON { erreur } avec code adapté.
-
-   Sécurité : liste blanche de domaines — ce relais ne doit pas
-   devenir un proxy ouvert.
+   Relais d'un PDF d'arrêté préfectoral, la fusion du dossier se
+   faisant côté client. Gère deux familles de sources :
+   - liens directs vers un PDF (préfectures, .gouv.fr) ;
+   - pages de partage Box du Cerema (cerema.box.com/s/...), qui
+     sont du HTML : le relais en extrait l'identifiant du fichier
+     puis appelle le point de téléchargement direct de Box.
+   Se présente comme un navigateur : les pare-feux .gouv.fr
+   coupent la connexion des agents inconnus.
+   Sécurité : liste blanche de domaines.
    ============================================================ */
 "use strict";
 
 const DELAI_MS = 20000;
-const LIMITE_RELAIS = 4.2 * 1024 * 1024;   /* marge sous le plafond Vercel */
+const LIMITE_RELAIS = 4.2 * 1024 * 1024;
+
+const ENTETES_NAV = {
+  "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
+  "Accept": "text/html,application/xhtml+xml,application/pdf,application/xml;q=0.9,*/*;q=0.8",
+  "Accept-Language": "fr-FR,fr;q=0.9"
+};
 
 function domaineAutorise(h) {
   h = String(h || "").toLowerCase();
   return h === "cerema.box.com" ||
-         h.endsWith(".cerema.fr") ||
-         h === "cerema.fr" ||
-         h.endsWith(".gouv.fr") ||
-         h.endsWith(".legifrance.gouv.fr");
+         h.endsWith(".cerema.fr") || h === "cerema.fr" ||
+         h.endsWith(".gouv.fr");
+}
+
+async function chercher(url, entetes) {
+  const ctl = new AbortController();
+  const t = setTimeout(() => ctl.abort(), DELAI_MS);
+  try {
+    const r = await fetch(url, { redirect: "follow", signal: ctl.signal, headers: entetes });
+    const octets = Buffer.from(await r.arrayBuffer());
+    return { statut: r.status, octets, type: r.headers.get("content-type") || "" };
+  } finally {
+    clearTimeout(t);
+  }
+}
+
+async function chercherAvecReprise(url) {
+  try {
+    return await chercher(url, ENTETES_NAV);
+  } catch (e) {
+    /* échec réseau : une seule reprise après une seconde */
+    await new Promise(function (ok) { setTimeout(ok, 1000); });
+    return await chercher(url, ENTETES_NAV);
+  }
+}
+
+function estPdf(octets) {
+  return octets.slice(0, 1024).toString("latin1").indexOf("%PDF") >= 0;
+}
+
+/* page de partage Box -> URL de téléchargement direct */
+function resoudreBox(html, urlPage) {
+  const nom = (urlPage.pathname.match(/\/s\/([A-Za-z0-9]+)/) || [])[1];
+  if (!nom) return null;
+  const motifs = [
+    /"itemID"\s*:\s*"?(\d{6,})"?/,
+    /typedID"\s*:\s*"f_(\d{6,})"/,
+    /data-item-id="(\d{6,})"/,
+    /"id"\s*:\s*"?f_(\d{6,})"?/
+  ];
+  for (let i = 0; i < motifs.length; i++) {
+    const m = html.match(motifs[i]);
+    if (m) {
+      return urlPage.origin + "/index.php?rm=box_download_shared_file&shared_name=" +
+             nom + "&file_id=f_" + m[1];
+    }
+  }
+  return null;
 }
 
 module.exports = async function (req, res) {
@@ -46,30 +94,36 @@ module.exports = async function (req, res) {
     return res.status(403).json({ erreur: "domaine hors liste blanche : " + url.hostname });
   }
 
-  const ctl = new AbortController();
-  const t = setTimeout(() => ctl.abort(), DELAI_MS);
   try {
-    const r = await fetch(url.toString(), {
-      redirect: "follow",
-      signal: ctl.signal,
-      headers: { "User-Agent": "XYLO/1.0 (FIDAL Notaires; jean-francois.dumetz@fidal.notaires.fr)" }
-    });
-    if (!r.ok) return res.status(502).json({ erreur: "source HTTP " + r.status });
-    const octets = Buffer.from(await r.arrayBuffer());
-    if (octets.length > LIMITE_RELAIS) {
-      return res.status(413).json({ erreur: "document trop volumineux pour le relais (" +
-        (octets.length / 1048576).toFixed(1) + " Mo)" });
+    let r = await chercherAvecReprise(url.toString());
+    if (r.statut < 200 || r.statut >= 300) {
+      return res.status(502).json({ erreur: "source HTTP " + r.statut });
     }
-    const tete = octets.slice(0, 1024).toString("latin1");
-    if (tete.indexOf("%PDF") < 0) {
-      return res.status(502).json({ erreur: "le lien ne renvoie pas un PDF" });
+
+    /* page de partage Box : second saut vers le fichier lui-même */
+    if (!estPdf(r.octets) && url.hostname.endsWith(".box.com")) {
+      const direct = resoudreBox(r.octets.toString("utf8"), url);
+      if (!direct) {
+        return res.status(502).json({ erreur: "page Box illisible (identifiant du fichier introuvable)" });
+      }
+      r = await chercherAvecReprise(direct);
+      if (r.statut < 200 || r.statut >= 300) {
+        return res.status(502).json({ erreur: "téléchargement Box HTTP " + r.statut });
+      }
+    }
+
+    if (!estPdf(r.octets)) {
+      return res.status(502).json({ erreur: "le lien ne renvoie pas un PDF (" + (r.type || "type inconnu") + ")" });
+    }
+    if (r.octets.length > LIMITE_RELAIS) {
+      return res.status(413).json({ erreur: "document trop volumineux pour le relais (" +
+        (r.octets.length / 1048576).toFixed(1) + " Mo)" });
     }
     res.setHeader("Content-Type", "application/pdf");
     res.setHeader("Cache-Control", "public, max-age=86400");
-    return res.status(200).send(octets);
+    return res.status(200).send(r.octets);
   } catch (e) {
-    return res.status(504).json({ erreur: e.name === "AbortError" ? "délai dépassé" : e.message });
-  } finally {
-    clearTimeout(t);
+    const code = (e && e.cause && e.cause.code) ? e.cause.code : (e.name === "AbortError" ? "délai dépassé" : e.message);
+    return res.status(504).json({ erreur: "échec réseau : " + code });
   }
 };
