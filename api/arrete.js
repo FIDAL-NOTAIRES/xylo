@@ -35,19 +35,27 @@ async function chercher(url, entetes) {
   try {
     const r = await fetch(url, { redirect: "follow", signal: ctl.signal, headers: entetes });
     const octets = Buffer.from(await r.arrayBuffer());
-    return { statut: r.status, octets, type: r.headers.get("content-type") || "" };
+    let biscuits = [];
+    if (typeof r.headers.getSetCookie === "function") {
+      biscuits = r.headers.getSetCookie();
+    } else if (r.headers.get("set-cookie")) {
+      biscuits = [r.headers.get("set-cookie")];
+    }
+    biscuits = biscuits.map(function (c) { return String(c).split(";")[0]; }).filter(Boolean);
+    return { statut: r.status, octets, type: r.headers.get("content-type") || "", biscuits };
   } finally {
     clearTimeout(t);
   }
 }
 
-async function chercherAvecReprise(url) {
+async function chercherAvecReprise(url, entetesSup) {
+  const entetes = Object.assign({}, ENTETES_NAV, entetesSup || {});
   try {
-    return await chercher(url, ENTETES_NAV);
+    return await chercher(url, entetes);
   } catch (e) {
     /* échec réseau : une seule reprise après une seconde */
     await new Promise(function (ok) { setTimeout(ok, 1000); });
-    return await chercher(url, ENTETES_NAV);
+    return await chercher(url, entetes);
   }
 }
 
@@ -106,7 +114,9 @@ module.exports = async function (req, res) {
       if (!direct) {
         return res.status(502).json({ erreur: "page Box illisible (identifiant du fichier introuvable)" });
       }
-      r = await chercherAvecReprise(direct);
+      const sup = { "Referer": url.toString() };
+      if (r.biscuits && r.biscuits.length) sup["Cookie"] = r.biscuits.join("; ");
+      r = await chercherAvecReprise(direct, sup);
       if (r.statut < 200 || r.statut >= 300) {
         return res.status(502).json({ erreur: "téléchargement Box HTTP " + r.statut });
       }
