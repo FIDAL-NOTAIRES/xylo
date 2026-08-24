@@ -83,6 +83,59 @@ function resoudreBox(html, urlPage) {
   return null;
 }
 
+/* circuit complet Box : la page fournit un jeton de requête, qu'on
+   échange contre un jeton d'accès en lecture, puis l'API officielle
+   sert le fichier. C'est le chemin que la visionneuse Box elle-même
+   emprunte. */
+async function boxProfond(html, urlPage, biscuits) {
+  const mid = html.match(/"itemID"\s*:\s*"?(\d{6,})"?/) ||
+              html.match(/typedID"\s*:\s*"f_(\d{6,})"/) ||
+              html.match(/data-item-id="(\d{6,})"/);
+  const mtk = html.match(/"requestToken"\s*:\s*"([^"]+)"/);
+  if (!mid || !mtk) return { erreur: "page Box illisible (identifiant ou jeton introuvable)" };
+  const id = mid[1], jeton = mtk[1];
+  const communs = {
+    "User-Agent": ENTETES_NAV["User-Agent"],
+    "Referer": urlPage.toString(),
+    "Cookie": (biscuits || []).join("; ")
+  };
+  const ctl = new AbortController();
+  const t = setTimeout(() => ctl.abort(), DELAI_MS);
+  try {
+    const rTok = await fetch(urlPage.origin + "/app-api/enduserapp/elements/tokens", {
+      method: "POST",
+      signal: ctl.signal,
+      headers: Object.assign({
+        "Content-Type": "application/json",
+        "Request-Token": jeton,
+        "X-Request-Token": jeton
+      }, communs),
+      body: JSON.stringify({ fileIDs: ["file_" + id] })
+    });
+    if (!rTok.ok) return { erreur: "jeton Box HTTP " + rTok.status };
+    const jTok = await rTok.json();
+    const acces = jTok["file_" + id] && (jTok["file_" + id].read || jTok["file_" + id].write);
+    if (!acces) return { erreur: "jeton Box absent de la réponse" };
+    const rDoc = await fetch("https://api.box.com/2.0/files/" + id + "/content", {
+      redirect: "follow",
+      signal: ctl.signal,
+      headers: {
+        "Authorization": "Bearer " + acces,
+        "BoxApi": "shared_link=" + urlPage.toString(),
+        "User-Agent": ENTETES_NAV["User-Agent"]
+      }
+    });
+    if (!rDoc.ok) return { erreur: "contenu Box HTTP " + rDoc.status };
+    const octets = Buffer.from(await rDoc.arrayBuffer());
+    return { octets };
+  } catch (e) {
+    const code = (e && e.cause && e.cause.code) ? e.cause.code : (e.name === "AbortError" ? "délai dépassé" : e.message);
+    return { erreur: "échec réseau Box : " + code };
+  } finally {
+    clearTimeout(t);
+  }
+}
+
 module.exports = async function (req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
   if (req.method === "OPTIONS") return res.status(204).end();
@@ -110,16 +163,24 @@ module.exports = async function (req, res) {
 
     /* page de partage Box : second saut vers le fichier lui-même */
     if (!estPdf(r.octets) && url.hostname.endsWith(".box.com")) {
-      const direct = resoudreBox(r.octets.toString("utf8"), url);
-      if (!direct) {
-        return res.status(502).json({ erreur: "page Box illisible (identifiant du fichier introuvable)" });
+      const pageHtml = r.octets.toString("utf8");
+      const biscuits = r.biscuits || [];
+      let servi = null;
+      const direct = resoudreBox(pageHtml, url);
+      if (direct) {
+        const sup = { "Referer": url.toString() };
+        if (biscuits.length) sup["Cookie"] = biscuits.join("; ");
+        try {
+          const essai = await chercherAvecReprise(direct, sup);
+          if (essai.statut >= 200 && essai.statut < 300 && estPdf(essai.octets)) servi = essai.octets;
+        } catch (e) { /* on passe au circuit profond */ }
       }
-      const sup = { "Referer": url.toString() };
-      if (r.biscuits && r.biscuits.length) sup["Cookie"] = r.biscuits.join("; ");
-      r = await chercherAvecReprise(direct, sup);
-      if (r.statut < 200 || r.statut >= 300) {
-        return res.status(502).json({ erreur: "téléchargement Box HTTP " + r.statut });
+      if (!servi) {
+        const prof = await boxProfond(pageHtml, url, biscuits);
+        if (prof.erreur) return res.status(502).json({ erreur: prof.erreur });
+        servi = prof.octets;
       }
+      r = { statut: 200, octets: servi, type: "application/pdf" };
     }
 
     if (!estPdf(r.octets)) {
