@@ -206,6 +206,7 @@ tbody tr:nth-child(even){background:#FAFBFC}
 </div>
 <div class="wrap" id="sheets"></div>
 
+<script src="xylo-moteur.js"></script>
 <script>
 "use strict";
 
@@ -213,67 +214,32 @@ tbody tr:nth-child(even){background:#FAFBFC}
    RÉFÉRENTIEL — amorce
    statut : total | partiel | zonage | aucun | verifier
    ============================================================ */
-var REF = {
-  meta:{ version:"0.2", etabli:"2026-08-22" },
-  /* Surcharges manuelles : elles PRIMENT sur la moisson Cerema.
-     N'y porter que ce que la moisson ne sait pas dire (ex. date
-     d'effet différée), et retirer chaque entrée dès qu'elle est
-     couverte — une surcharge qui vieillit masque du frais. */
-  dep:{
-    "72":{
-      termite:{ statut:"total", arrete:"AP du 12/12/2025",
-        effet:"2026-09-01", source:"prefecture", verifie:"2026-08-22",
-        url:"ap-sarthe-termites-20251212.pdf",
-        note:"Arrêté couvrant l'intégralité du département, effet différé. Copie servie par XYLO, téléchargée sur sarthe.gouv.fr le 22/08/2026 (le site préfectoral refuse les accès automatisés). Surcharge à retirer après le 01/09/2026." }
-    }
-  },
-  com:{}
-};
+var M = window.XyloMoteur;
+var REF = M.nouveauReferentiel("0.3");
+var LIB = M.LIB;
+function todayISO(){ return M.todayISO(); }
+function resolve(insee, risque){ return M.resolve(REF, insee, risque); }
 
-var LIB = {
-  total:{ txt:"Département classé en totalité", cl:"carmin" },
-  partiel:{ txt:"Commune classée", cl:"carmin" },
-  zonage:{ txt:"Commune classée — zonage infra-communal", cl:"carmin" },
-  avenir:{ txt:"Classement à venir", cl:"orange" },
-  aucun:{ txt:"Hors zone classée", cl:"canard" },
-  verifier:{ txt:"À vérifier", cl:"gris" }
-};
+function fr(iso){
+  if(!iso) return "—";
+  var p = iso.split("-"); return p[2]+"/"+p[1]+"/"+p[0];
+}
+function esc(s){
+  return String(s==null?"":s).replace(/[&<>"]/g, function(c){
+    return {"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;"}[c];
+  });
+}
 
-/* ---- référentiel moissonné (Cerema) : fusionné sous les
-   surcharges manuelles ci-dessus, qui gardent la priorité ---- */
+/* ---- référentiel moissonné (Cerema), fusionné sous les surcharges ---- */
 var REF_CHARGE = false;
 function integrerRef(x){
-  ["dep","com"].forEach(function(niv){
-    if(!x[niv]) return;
-    Object.keys(x[niv]).forEach(function(code){
-      if(!REF[niv][code]) REF[niv][code] = {};
-      ["termite","merule"].forEach(function(rq){
-        if(!x[niv][code][rq]) return;
-        if(!REF[niv][code][rq]){
-          REF[niv][code][rq] = x[niv][code][rq];
-        } else {
-          /* fusion champ par champ : la surcharge manuelle garde ses
-             champs, la moisson comble les champs qu'elle ne porte pas
-             (ex. lien direct vers le PDF de l'arrêté) */
-          var man = REF[niv][code][rq], moi = x[niv][code][rq];
-          Object.keys(moi).forEach(function(k){
-            if(man[k] === undefined || man[k] === null || man[k] === ""){
-              man[k] = moi[k];
-            }
-          });
-        }
-      });
-    });
-  });
-  if(x.meta && x.meta.moissonne_le){ REF.meta.moisson = x.meta.moissonne_le; }
-  if(x.meta && x.meta.exhaustif){ REF.meta.exhaustif = x.meta.exhaustif; }
+  M.integrer(REF, x);
   REF_CHARGE = true;
   var n = Object.keys(REF.com).length;
   document.getElementById("refEtat").textContent =
     "Référentiel : moisson Cerema du " + fr(REF.meta.moisson || "") +
     " chargée (" + n + " communes classées ou signalées).";
   document.getElementById("refBtn").hidden = true;
-  /* si des feuilles sont déjà affichées, les recalculer avec le référentiel */
   if(document.getElementById("sheets").style.display === "block" && communes.length){
     build();
   }
@@ -281,8 +247,6 @@ function integrerRef(x){
 fetch("xylo-referentiel.json").then(function(r){
   if(!r.ok) throw 0; return r.json();
 }).then(integrerRef).catch(function(){
-  /* fetch bloqué (page ouverte en file://) ou fichier absent :
-     proposer le chargement manuel */
   document.getElementById("refBtn").hidden = false;
   document.getElementById("refEtat").textContent =
     "Référentiel : amorce seule — chargez xylo-referentiel.json pour la couverture nationale.";
@@ -303,70 +267,6 @@ document.getElementById("refFic").addEventListener("change", function(e){
   };
   lecteur.readAsText(f);
 });
-
-/* ---- résolution du statut ----
-   Priorité : entrée communale positive > arrêté départemental total >
-   entrée communale grise explicite > hors zone attesté (couche communale
-   exhaustive) > à vérifier. */
-function resolve(insee, risque){
-  var dep = insee.substring(0, (insee.charAt(0)==="9" && insee.charAt(1)==="7") ? 3 : 2);
-  var c = REF.com[insee] && REF.com[insee][risque];
-  var d = REF.dep[dep] && REF.dep[dep][risque];
-  var e = null;
-  if(c && c.statut && c.statut !== "verifier") e = c;
-  else if(d && d.statut && d.statut !== "verifier") e = d;
-  else if(c || d) e = c || d;
-  if(!e){
-    if(REF.meta.exhaustif && REF.meta.exhaustif[risque]){
-      return { statut:"aucun", cl:"canard", txt:LIB.aucun.txt,
-        note:"Commune hors des zones classées selon la couche nationale du Cerema.",
-        data:{ verifie: REF.meta.moisson, source:"cerema" } };
-    }
-    return { statut:"verifier", cl:"gris", txt:LIB.verifier.txt,
-      note:"Aucune donnée contrôlée dans le référentiel. Consulter la cartographie Cerema puis l'arrêté préfectoral.", data:{} };
-  }
-  if(e.statut === "verifier"){
-    return { statut:"verifier", cl:"gris", txt:LIB.verifier.txt,
-      note:e.note || "Donnée présente mais non arbitrée dans la couche Cerema.", data:e };
-  }
-  var futur = e.effet && e.effet > todayISO();
-  var key = futur ? "avenir" : e.statut;
-  var L = LIB[key] || LIB.verifier;
-  var note = e.note || "";
-  if(key === "zonage" && !note){
-    note = "Classement infra-communal : seules certaines parcelles sont visées. Lire l'annexe parcellaire de l'arrêté avant de conclure.";
-  }
-  return { statut:key, cl:L.cl, txt:L.txt, note:note, data:e, futur:!!futur };
-}
-function todayISO(){ return new Date().toISOString().slice(0,10); }
-function fr(iso){
-  if(!iso) return "—";
-  var p = iso.split("-"); return p[2]+"/"+p[1]+"/"+p[0];
-}
-function esc(s){
-  return String(s==null?"":s).replace(/[&<>"]/g, function(c){
-    return {"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;"}[c];
-  });
-}
-
-/* ============================================================
-   PORTÉE — une tuile par risque, un seul code
-   ?r=t  termites seuls · ?r=m  mérule seule · défaut : les deux
-   ============================================================ */
-var SCOPE = (function(){
-  var m = location.search.match(/[?&]r=(t|m|tm)\b/);
-  return m ? m[1] : "tm";
-})();
-var TITRES = { t:"Termites", m:"Mérule", tm:"Termites &amp; mérule" };
-
-function applyScope(){
-  document.getElementById("risque").value = SCOPE;
-  document.querySelector("header .sub").innerHTML =
-    TITRES[SCOPE] + " — situation communale et parcellaire · FIDAL Notaires Paris";
-  document.title = "XYLO — " + TITRES[SCOPE].replace("&amp;","&");
-}
-function wantT(){ return SCOPE.indexOf("t") >= 0; }
-function wantM(){ return SCOPE.indexOf("m") >= 0; }
 
 /* ============================================================
    ÉTAT
