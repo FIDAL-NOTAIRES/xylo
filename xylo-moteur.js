@@ -13,6 +13,35 @@
 (function (racine) {
   "use strict";
 
+  /* ---- SURCHARGES MANUELLES ----
+     Source unique : la page et l'API lisent cette table, jamais une copie.
+     N'y porter que ce que la moisson ne sait pas dire (date d'effet différée,
+     lien de substitution), et retirer chaque entrée dès qu'elle est couverte.
+     Chaque surcharge naît avec sa date de retrait, inscrite dans la note. */
+  var SURCHARGES = {
+    dep: {
+      "72": {
+        termite: {
+          statut: "total", arrete: "AP du 12/12/2025", effet: "2026-09-01",
+          source: "prefecture", verifie: "2026-08-22",
+          url: "ap-sarthe-termites-20251212.pdf",
+          note: "Arrêté couvrant l'intégralité du département, effet différé. Copie servie par XYLO, téléchargée sur sarthe.gouv.fr le 22/08/2026 (le site préfectoral refuse les accès automatisés). Surcharge à retirer après le 01/09/2026."
+        }
+      }
+    },
+    com: {}
+  };
+
+  /* Référentiel neuf, amorcé des surcharges (copie profonde : deux appels
+     ne doivent pas se partager les mêmes objets). */
+  function nouveauReferentiel(version) {
+    return {
+      meta: { version: version || "0.3" },
+      dep: JSON.parse(JSON.stringify(SURCHARGES.dep)),
+      com: JSON.parse(JSON.stringify(SURCHARGES.com))
+    };
+  }
+
   var LIB = {
     total:    { txt: "Département classé en totalité", cl: "carmin" },
     partiel:  { txt: "Commune classée", cl: "carmin" },
@@ -129,7 +158,9 @@
     return REF;
   }
 
-  var API = { LIB: LIB, resolve: resolve, integrer: integrer,
+  var API = { LIB: LIB, SURCHARGES: SURCHARGES,
+              nouveauReferentiel: nouveauReferentiel,
+              resolve: resolve, integrer: integrer,
               resolveParcelle: resolveParcelle, normParcelle: normParcelle,
               departement: departement, todayISO: todayISO };
 
