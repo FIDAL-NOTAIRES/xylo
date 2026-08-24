@@ -223,8 +223,8 @@ var REF = {
     "72":{
       termite:{ statut:"total", arrete:"AP du 12/12/2025",
         effet:"2026-09-01", source:"prefecture", verifie:"2026-08-22",
-        url:"https://www.sarthe.gouv.fr/contenu/telechargement/29408/181923/file/20251212-Arr%C3%AAt%C3%A9%20pr%C3%A9fectoral%20totalit%C3%A9%20Sarthe.pdf",
-        note:"Arrêté couvrant l'intégralité du département, effet différé. Surcharge à retirer après le 01/09/2026." }
+        url:"ap-sarthe-termites-20251212.pdf",
+        note:"Arrêté couvrant l'intégralité du département, effet différé. Copie servie par XYLO, téléchargée sur sarthe.gouv.fr le 22/08/2026 (le site préfectoral refuse les accès automatisés). Surcharge à retirer après le 01/09/2026." }
     }
   },
   com:{}
@@ -793,7 +793,10 @@ document.getElementById("btnArr").addEventListener("click", function(){
               pageGarde(doc, polices[0], polices[1], it, 0, "plafond du dossier atteint (20 Mo)");
               return;
             }
-            return fetch("api/arrete?u=" + encodeURIComponent(it.url))
+            var voie = /^https?:/i.test(it.url)
+              ? "api/arrete?u=" + encodeURIComponent(it.url)
+              : it.url;
+            return fetch(voie)
             .then(function(r){
               if(!r.ok){
                 return r.json().catch(function(){ return {}; }).then(function(j){
