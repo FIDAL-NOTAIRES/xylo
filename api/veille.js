@@ -49,16 +49,39 @@ function versISO(s) {
   return null;
 }
 
-async function jsonDe(url) {
-  const r = await fetch(url, { headers: { "User-Agent": "XYLO-veille/1.0" } });
-  if (!r.ok) throw new Error("HTTP " + r.status + " sur " + url);
-  return r.json();
+const ENTETES = {
+  "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
+  "Accept": "application/json,text/plain,*/*",
+  "Accept-Language": "fr-FR,fr;q=0.9"
+};
+
+/* Le service amont lâche par intermittence sur de longues séries de
+   requêtes : trois tentatives espacées, et un message qui dit toujours
+   quel appel a échoué — un « fetch failed » nu est indiagnosticable. */
+async function jsonDe(url, etiquette) {
+  let dernier = null;
+  for (let essai = 1; essai <= 3; essai++) {
+    const ctl = new AbortController();
+    const minuteur = setTimeout(() => ctl.abort(), 12000);
+    try {
+      const r = await fetch(url, { headers: ENTETES, signal: ctl.signal });
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      return await r.json();
+    } catch (e) {
+      dernier = (e && e.cause && e.cause.code) ? e.cause.code
+        : (e.name === "AbortError" ? "délai dépassé" : e.message);
+      if (essai < 3) await new Promise(ok => setTimeout(ok, 400 * essai));
+    } finally {
+      clearTimeout(minuteur);
+    }
+  }
+  throw new Error((etiquette || "appel") + " : " + dernier);
 }
 
 /* ---------- moisson d'une couche ---------- */
 
 async function moissonner(svc) {
-  const meta = await jsonDe(BASE + svc.service + "/FeatureServer/0?f=json");
+  const meta = await jsonDe(BASE + svc.service + "/FeatureServer/0?f=json", svc.service + " métadonnées");
   if (!meta || !meta.fields) throw new Error(svc.service + " : métadonnées illisibles");
   const noms = meta.fields.map(f => f.name.toLowerCase());
   const pas = meta.maxRecordCount || 2000;
@@ -88,7 +111,7 @@ async function moissonner(svc) {
     const u = BASE + svc.service + "/FeatureServer/0/query"
       + "?where=1%3D1&outFields=*&returnGeometry=false&f=json"
       + "&resultOffset=" + offset + "&resultRecordCount=" + pas;
-    const page = await jsonDe(u);
+    const page = await jsonDe(u, svc.service + " page offset " + offset);
     if (page.error) throw new Error(svc.service + " : " + JSON.stringify(page.error));
     const lot = page.features || [];
     lot.forEach(x => lignes.push(x.attributes));
@@ -303,10 +326,22 @@ module.exports = async function (req, res) {
 
   const t0 = Date.now();
   const jour = moteur.todayISO();
+  /* ?couche=... limite la moisson à une couche : sert au diagnostic et,
+     si besoin, au fractionnement en plusieurs exécutions. Une moisson
+     partielle n'écrit jamais le référentiel. */
+  const seule = req.query && req.query.couche ? String(req.query.couche) : null;
+  const aFaire = seule ? COUCHES.filter(c => c.service === seule) : COUCHES;
+  if (seule && !aFaire.length) {
+    return res.status(400).json({ erreur: "couche inconnue",
+      couches: COUCHES.map(c => c.service) });
+  }
   try {
     const moissons = [];
-    for (const svc of COUCHES) {
+    const chronos = {};
+    for (const svc of aFaire) {
+      const tc = Date.now();
       moissons.push({ svc, r: await moissonner(svc) });
+      chronos[svc.service] = Date.now() - tc;
     }
     const { ref, douteux } = batir(moissons, jour);
     const volumes = { dep: Object.keys(ref.dep).length, com: Object.keys(ref.com).length };
@@ -331,9 +366,16 @@ module.exports = async function (req, res) {
     const ms = Date.now() - t0;
     const entree = entreeJournal(jour, ecarts, douteux, ms, volumes);
 
+    if (seule) {
+      return res.status(200).json({
+        mode: "couche seule (aucune écriture)", couche: seule,
+        duree_ms: ms, chronos, volumes,
+        lignes: moissons[0] ? moissons[0].r.lignes.length : 0
+      });
+    }
     if (dry) {
       return res.status(200).json({
-        mode: "analyse seule", duree_ms: ms, volumes,
+        mode: "analyse seule", duree_ms: ms, chronos, volumes,
         ecarts: ecarts.length, non_arbitrees: douteux.length,
         apercu_journal: entree, premiers_ecarts: ecarts.slice(0, 20)
       });
@@ -358,12 +400,13 @@ module.exports = async function (req, res) {
       "Journal de veille " + jour, luJ ? luJ.sha : null, jeton);
 
     return res.status(200).json({
-      jour, duree_ms: ms, volumes,
+      jour, duree_ms: ms, chronos, volumes,
       ecarts: ecarts.length, non_arbitrees: douteux.length,
       referentiel_ecrit: refEcrit,
       journal: "https://github.com/" + DEPOT + "/blob/main/" + F_JOURNAL
     });
   } catch (e) {
-    return res.status(500).json({ erreur: e.message, duree_ms: Date.now() - t0 });
+    return res.status(500).json({ erreur: e.message, duree_ms: Date.now() - t0,
+      indication: "l'erreur nomme la couche et la page en cause ; si le total approche 60 s, fractionner par couche avec ?couche=commune_termite" });
   }
 };
