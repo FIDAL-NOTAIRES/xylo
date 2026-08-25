@@ -91,6 +91,11 @@ td{border-bottom:1px solid var(--trait);padding:6px 9px;vertical-align:top}
         Le fichier n'agit que sur les noms qu'il connaît : il ne supprime rien et ne
         touche à aucun autre fichier.
         <br><br>
+        <strong>Avant de lancer</strong> : vérifiez dans le tableau ci-dessous que le
+        nombre de renommages correspond au nombre d'arrêtés effectivement chargés.
+        Un écart signale que le dossier contient d'autres documents — dans ce cas,
+        ne lancez pas et signalez-le.
+        <br><br>
         Si Windows bloque l'exécution : clic droit sur le fichier →
         <strong>Propriétés</strong> → case <strong>Débloquer</strong> en bas →
         <strong>Appliquer</strong>.
@@ -219,13 +224,23 @@ document.getElementById("dossier").addEventListener("change", async function(e){
   if (!fichiers.length) return;
   document.getElementById("etat").textContent = "analyse de " + fichiers.length + " élément(s)…";
   paires = []; soucis = [];
-  var pris = {};
+  var pris = {}, horsSujet = 0;
 
   for (var i = 0; i < fichiers.length; i++) {
     var f = fichiers[i], nom = f.name;
+    var chemin = f.webkitRelativePath || nom;
+
+    /* On ignore silencieusement tout ce qui n'est pas un arrêté téléchargé :
+       le dossier peut contenir d'autres documents de l'étude, et un
+       rapprochement trop permissif proposerait de les renommer. */
+    if (chemin.split("/").length > 2) { horsSujet++; continue; }      /* sous-dossier */
     if (/^xylo-avancement.*\.json$/i.test(nom)) continue;
     if (/^renommer\.bat$/i.test(nom)) continue;
-    if (!/\.pdf$/i.test(nom)) { soucis.push({ nom: nom, motif: "n'est pas un PDF" }); continue; }
+    if (!/\.pdf$/i.test(nom)) { horsSujet++; continue; }
+
+    /* Seuls les noms produits par le Cerema (AP_...) ou déjà à la
+       nomenclature XYLO (ap-...) sont considérés. */
+    if (!/^AP[_-]/i.test(nom)) { horsSujet++; continue; }
 
     /* déjà au format XYLO : rien à faire */
     var dejaBon = ARRETES.filter(function(a){ return a.f === nom; })[0];
@@ -255,12 +270,13 @@ document.getElementById("dossier").addEventListener("change", async function(e){
   }
 
   reste = ARRETES.filter(function(a){ return !pris[a.f]; });
-  afficher(fichiers.length);
+  afficher(fichiers.length, horsSujet);
 });
 
-function afficher(nbFichiers){
+function afficher(nbFichiers, horsSujet){
   document.getElementById("resultat").hidden = false;
-  document.getElementById("etat").textContent = nbFichiers + " élément(s) analysé(s).";
+  document.getElementById("etat").textContent = nbFichiers + " élément(s) analysé(s)" +
+    (horsSujet ? ", dont " + horsSujet + " ignoré(s) : sous-dossiers et documents étrangers aux arrêtés" : "") + ".";
   var dejaBons = ARRETES.length - reste.length - paires.length;
   document.getElementById("nOk").textContent = paires.length + dejaBons;
   document.getElementById("nReste").textContent = reste.length;
