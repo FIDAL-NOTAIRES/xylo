@@ -420,10 +420,27 @@ module.exports = async function (req, res) {
       });
     }
 
-    /* référentiel : écrit seulement s'il a changé */
+    /* Référentiel : écrit seulement en cas de mouvement réel.
+       Le champ « verifie » portant la date du jour, le fichier diffère
+       chaque matin même sans actualité juridique : on compare donc les
+       données hors dates de contrôle, pour que chaque commit de
+       l'historique corresponde à un vrai changement d'arrêté. */
+    function empreinte(r) {
+      const out = { dep: {}, com: {} };
+      ["dep", "com"].forEach(function (niv) {
+        Object.keys(r[niv] || {}).sort().forEach(function (code) {
+          ["termite", "merule"].forEach(function (rq) {
+            const e = r[niv][code][rq];
+            if (!e) return;
+            out[niv][code + ":" + rq] = [e.statut, e.date_arrete || "", e.url || ""].join("|");
+          });
+        });
+      });
+      return JSON.stringify(out);
+    }
     let refEcrit = false;
     const nouveauTexte = JSON.stringify(ref);
-    if (JSON.stringify(ancien) !== nouveauTexte) {
+    if (empreinte(ancien) !== empreinte(ref)) {
       await ghEcrire(F_REF, nouveauTexte,
         "Veille " + jour + " : " + (ecarts.length ? ecarts.length + " écart(s)" : "actualisation"),
         shaRef, jeton);
@@ -442,6 +459,8 @@ module.exports = async function (req, res) {
       jour, duree_ms: ms, chronos, volumes,
       ecarts: ecarts.length, non_arbitrees: douteux.length,
       referentiel_ecrit: refEcrit,
+      note: refEcrit ? "référentiel actualisé (mouvement détecté)"
+                     : "référentiel inchangé : aucun commit, seul le journal atteste du passage",
       journal: "https://github.com/" + DEPOT + "/blob/main/" + F_JOURNAL
     });
   } catch (e) {
