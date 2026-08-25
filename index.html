@@ -269,6 +269,25 @@ document.getElementById("refFic").addEventListener("change", function(e){
 });
 
 /* ============================================================
+   PORTÉE — une tuile par risque, un seul code
+   ?r=t  termites seuls · ?r=m  mérule seule · défaut : les deux
+   ============================================================ */
+var SCOPE = (function(){
+  var m = location.search.match(/[?&]r=(t|m|tm)\b/);
+  return m ? m[1] : "tm";
+})();
+var TITRES = { t:"Termites", m:"Mérule", tm:"Termites &amp; mérule" };
+
+function applyScope(){
+  document.getElementById("risque").value = SCOPE;
+  document.querySelector("header .sub").innerHTML =
+    TITRES[SCOPE] + " — situation communale et parcellaire · FIDAL Notaires Paris";
+  document.title = "XYLO — " + TITRES[SCOPE].replace("&amp;","&");
+}
+function wantT(){ return SCOPE.indexOf("t") >= 0; }
+function wantM(){ return SCOPE.indexOf("m") >= 0; }
+
+/* ============================================================
    ÉTAT
    ============================================================ */
 var communes = [];   /* { insee, nom, cp, lat, lon, biens:[] } */
