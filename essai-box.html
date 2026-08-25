@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>XYLO — essai d'accès aux arrêtés Box</title>
+<style>
+body{font-family:"Segoe UI",Tahoma,sans-serif;background:#F2F4F6;color:#0F2238;
+  max-width:820px;margin:26px auto;padding:0 16px;line-height:1.5}
+h1{font-family:Georgia,serif;font-weight:normal;font-size:21px;
+  border-bottom:2px solid #33838B;padding-bottom:8px}
+button{font-family:inherit;font-size:15px;padding:10px 18px;border:none;
+  border-radius:3px;background:#33838B;color:#fff;cursor:pointer}
+button:disabled{background:#8A94A0;cursor:default}
+#log{background:#fff;border:1px solid #D7DDE3;border-radius:3px;padding:14px;
+  margin-top:16px;font-size:13px;min-height:120px}
+#log div{padding:3px 0;border-bottom:1px solid #F0F3F5}
+.ok{color:#1F6B4A;font-weight:600}
+.ko{color:#A01040}
+.info{color:#657D96}
+code{background:#EAF2F3;padding:1px 5px;border-radius:2px;font-size:12px;
+  overflow-wrap:anywhere}
+.note{background:#FFF6EA;border-left:3px solid #FF982D;padding:10px 13px;
+  font-size:13px;margin-top:14px}
+</style>
+</head>
+<body>
+<h1>Essai d'accès aux arrêtés hébergés sur Box</h1>
+<p>Cette page teste, <strong>depuis votre navigateur</strong>, plusieurs façons
+d'obtenir le PDF d'un arrêté publié par le Cerema sur Box. Le serveur XYLO
+n'y parvient pas ; l'enjeu est de savoir si votre navigateur, lui, le peut.</p>
+
+<p class="info">Cas d'essai : arrêté termites du Mans (11/04/2024).</p>
+
+<button id="go">Lancer les essais</button>
+<div id="log">Prêt.</div>
+
+<div class="note">
+  Aucun fichier n'est envoyé nulle part : tout se passe dans votre navigateur.
+  Si un essai réussit, un lien de téléchargement apparaîtra pour contrôle.
+</div>
+
+<script>
+"use strict";
+var JETON = "wnppo1i39aogc7fkaren21i7eszprx0z";
+var ORIGINES = ["https://cerema.app.box.com", "https://cerema.box.com"];
+var logEl = document.getElementById("log");
+
+function log(t, cls){
+  var d = document.createElement("div");
+  if(cls) d.className = cls;
+  d.innerHTML = t;
+  logEl.appendChild(d);
+  return d;
+}
+function estPdf(buf){
+  var t = new Uint8Array(buf.slice(0, 8));
+  return t[0]===0x25 && t[1]===0x50 && t[2]===0x44 && t[3]===0x46;  /* %PDF */
+}
+function offrir(buf, nom){
+  var a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([buf], { type:"application/pdf" }));
+  a.download = nom;
+  a.textContent = "télécharger pour contrôle";
+  a.style.marginLeft = "8px";
+  return a;
+}
+
+/* Chaque essai rend { ok, detail, buf } */
+var ESSAIS = [
+  { nom: "Canal statique <code>/shared/static/{jeton}.pdf</code>",
+    faire: async function(){
+      for(var i=0;i<ORIGINES.length;i++){
+        try{
+          var r = await fetch(ORIGINES[i] + "/shared/static/" + JETON + ".pdf", { credentials:"include" });
+          if(!r.ok){ continue; }
+          var b = await r.arrayBuffer();
+          if(estPdf(b)) return { ok:true, detail:ORIGINES[i], buf:b };
+        }catch(e){ /* origine suivante */ }
+      }
+      return { ok:false, detail:"aucune origine ne sert de PDF" };
+    }},
+
+  { nom: "Point d'entrée <code>rm=box_download_shared_file</code>",
+    faire: async function(){
+      for(var i=0;i<ORIGINES.length;i++){
+        try{
+          var u = ORIGINES[i] + "/index.php?rm=box_download_shared_file&shared_name=" + JETON;
+          var r = await fetch(u, { credentials:"include" });
+          if(!r.ok){ continue; }
+          var b = await r.arrayBuffer();
+          if(estPdf(b)) return { ok:true, detail:ORIGINES[i], buf:b };
+        }catch(e){ /* origine suivante */ }
+      }
+      return { ok:false, detail:"refus ou réponse non-PDF" };
+    }},
+
+  { nom: "Lecture de la page de partage (identifiant du fichier)",
+    faire: async function(){
+      for(var i=0;i<ORIGINES.length;i++){
+        try{
+          var r = await fetch(ORIGINES[i] + "/s/" + JETON, { credentials:"include" });
+          if(!r.ok) continue;
+          var t = await r.text();
+          var mid = t.match(/"itemID"\s*:\s*"?(\d{6,})"?/) ||
+                    t.match(/typedID"\s*:\s*"f_(\d{6,})"/) ||
+                    t.match(/"fileID"\s*:\s*"?(\d{6,})"?/);
+          var mtk = t.match(/"requestToken"\s*:\s*"([^"]+)"/);
+          if(mid || mtk){
+            return { ok:true, detail:"page lisible — identifiant " +
+              (mid ? mid[1] : "absent") + ", jeton " + (mtk ? "présent" : "absent"),
+              itemID: mid ? mid[1] : null, jeton: mtk ? mtk[1] : null };
+          }
+          return { ok:false, detail:"page lue (" + t.length + " caractères) mais ni identifiant ni jeton" };
+        }catch(e){
+          return { ok:false, detail:"lecture bloquée : " + e.message +
+            " — c'est la signature d'un blocage de sécurité du navigateur (CORS)" };
+        }
+      }
+      return { ok:false, detail:"page inaccessible" };
+    }},
+
+  { nom: "API Box avec lien partagé (<code>api.box.com</code>)",
+    faire: async function(prec){
+      var id = prec && prec.itemID;
+      if(!id) return { ok:false, detail:"sans identifiant de fichier, essai impossible" };
+      try{
+        var r = await fetch("https://api.box.com/2.0/files/" + id + "/content", {
+          headers:{ "BoxApi": "shared_link=https://cerema.box.com/s/" + JETON }
+        });
+        if(!r.ok) return { ok:false, detail:"réponse " + r.status };
+        var b = await r.arrayBuffer();
+        if(estPdf(b)) return { ok:true, detail:"API publique", buf:b };
+        return { ok:false, detail:"réponse non-PDF" };
+      }catch(e){
+        return { ok:false, detail:"bloqué : " + e.message };
+      }
+    }}
+];
+
+document.getElementById("go").addEventListener("click", async function(){
+  this.disabled = true;
+  logEl.innerHTML = "";
+  var contexte = null, gagnant = null;
+  for(var i=0;i<ESSAIS.length;i++){
+    var e = ESSAIS[i];
+    var ligne = log("Essai " + (i+1) + " — " + e.nom + " … ", "info");
+    var r;
+    try { r = await e.faire(contexte); }
+    catch(err){ r = { ok:false, detail:"exception : " + err.message }; }
+    if(r.itemID || r.jeton) contexte = r;
+    ligne.className = r.ok ? "ok" : "ko";
+    ligne.innerHTML = "Essai " + (i+1) + " — " + e.nom + "<br>" +
+      (r.ok ? "RÉUSSI : " : "échec : ") + r.detail;
+    if(r.ok && r.buf){
+      ligne.appendChild(offrir(r.buf, "essai-arrete-le-mans.pdf"));
+      gagnant = e.nom;
+    }
+  }
+  log("<br><strong>Conclusion</strong> : " + (gagnant
+    ? "un canal fonctionne depuis le navigateur (" + gagnant +
+      "). La moisson des arrêtés est possible — copiez-moi ce résultat."
+    : "aucun canal ne fonctionne, même depuis votre navigateur. " +
+      "Copiez-moi les messages d'échec ci-dessus : ils diront s'il s'agit " +
+      "d'un refus de Box ou d'un blocage de sécurité du navigateur, " +
+      "et l'issue n'est pas la même."),
+    gagnant ? "ok" : "ko");
+  this.disabled = false;
+});
+</script>
+</body>
+</html>
