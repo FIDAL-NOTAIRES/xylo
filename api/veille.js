@@ -346,15 +346,49 @@ module.exports = async function (req, res) {
     const { ref, douteux } = batir(moissons, jour);
     const volumes = { dep: Object.keys(ref.dep).length, com: Object.keys(ref.com).length };
 
-    let ancien = { dep: {}, com: {}, meta: {} };
+    /* Ancien référentiel : lu par le canal brut, qui ne demande pas de
+       jeton — indispensable pour que le mode analyse compare vraiment.
+       Le sha, lui, n'est nécessaire qu'à l'écriture. */
+    let ancien = null;
     let shaRef = null;
+    try {
+      const rBrut = await fetch("https://raw.githubusercontent.com/" + DEPOT +
+        "/main/" + F_REF + "?t=" + Date.now(), { headers: ENTETES });
+      if (rBrut.ok) ancien = await rBrut.json();
+    } catch (e) { /* traité juste après */ }
     if (jeton) {
       const lu = await ghLire(F_REF, jeton);
-      if (lu) { shaRef = lu.sha; try { ancien = JSON.parse(lu.contenu); } catch (e) { /* référentiel illisible : tout sera vu comme apparition */ } }
+      if (lu) {
+        shaRef = lu.sha;
+        if (!ancien) { try { ancien = JSON.parse(lu.contenu); } catch (e) { /* illisible */ } }
+      }
+    }
+    /* Sans référentiel antérieur lisible, toute commune paraîtrait
+       nouvelle : on refuse de conclure plutôt que d'écrire un journal
+       de 9 000 fausses alertes. */
+    if (!ancien || !ancien.com || Object.keys(ancien.com).length < 1000) {
+      return res.status(409).json({
+        erreur: "référentiel antérieur introuvable ou incomplet : comparaison impossible",
+        detail: "sans base de comparaison, chaque commune serait signalée comme nouvelle. Vérifier " + F_REF + " au dépôt.",
+        communes_moissonnees: volumes.com,
+        communes_anciennes: ancien && ancien.com ? Object.keys(ancien.com).length : 0
+      });
     }
 
     const ecarts = comparer(ancien, ref);
     const ms = Date.now() - t0;
+
+    /* Un mouvement réel se compte en dizaines. Au-delà de 500 écarts,
+       c'est un changement de format ou de codage en amont, pas une
+       actualité juridique : on alerte et on n'écrit rien. */
+    const PLAFOND_ECARTS = 500;
+    if (!dry && ecarts.length > PLAFOND_ECARTS) {
+      return res.status(409).json({
+        erreur: "écarts anormalement nombreux (" + ecarts.length + ") : écriture suspendue",
+        detail: "vérifier manuellement avant d'accepter. Analyse détaillée : /api/veille?dry=1",
+        volumes, chronos, apercu: ecarts.slice(0, 15)
+      });
+    }
     const entree = entreeJournal(jour, ecarts, douteux, ms, volumes);
 
     if (seule) {
@@ -379,7 +413,10 @@ module.exports = async function (req, res) {
       return res.status(200).json({
         mode: "analyse seule", duree_ms: ms, chronos, volumes,
         ecarts: ecarts.length, non_arbitrees: douteux.length,
-        apercu_journal: entree, premiers_ecarts: ecarts.slice(0, 20)
+        communes_anciennes: Object.keys(ancien.com).length,
+        repartition: ecarts.reduce(function (n, e) { n[e.type] = (n[e.type] || 0) + 1; return n; }, {}),
+        premiers_ecarts: ecarts.slice(0, 15),
+        apercu_journal: entree.slice(0, 1200)
       });
     }
 
