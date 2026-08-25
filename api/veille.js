@@ -346,15 +346,6 @@ module.exports = async function (req, res) {
     const { ref, douteux } = batir(moissons, jour);
     const volumes = { dep: Object.keys(ref.dep).length, com: Object.keys(ref.com).length };
 
-    /* garde-fou : une moisson anormalement pauvre ne doit jamais
-       écraser un référentiel sain (panne partielle du service amont) */
-    if (volumes.com < 1000) {
-      return res.status(502).json({
-        erreur: "moisson anormalement pauvre (" + volumes.com + " communes) : écriture refusée",
-        volumes
-      });
-    }
-
     let ancien = { dep: {}, com: {}, meta: {} };
     let shaRef = null;
     if (jeton) {
@@ -373,6 +364,17 @@ module.exports = async function (req, res) {
         lignes: moissons[0] ? moissons[0].r.lignes.length : 0
       });
     }
+    /* garde-fou : une moisson anormalement pauvre ne doit jamais
+       écraser un référentiel sain (panne partielle du service amont).
+       Ne s'applique qu'à la moisson complète — une couche isolée ne
+       ramène légitimement aucune commune si elle est départementale. */
+    if (volumes.com < 1000) {
+      return res.status(502).json({
+        erreur: "moisson anormalement pauvre (" + volumes.com + " communes) : écriture refusée",
+        volumes, chronos
+      });
+    }
+
     if (dry) {
       return res.status(200).json({
         mode: "analyse seule", duree_ms: ms, chronos, volumes,
