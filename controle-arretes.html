@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>XYLO — contrôle et renommage du lot</title>
+<style>
+:root{--nuit:#0F2238;--canard:#33838B;--orange:#FF982D;--carmin:#A01040;
+  --gris:#8A94A0;--fond:#F2F4F6;--trait:#D7DDE3;--pale:#EAF2F3;--fonce:#0F5158;--vert:#1F6B4A}
+*{box-sizing:border-box}
+body{margin:0;background:var(--fond);color:var(--nuit);
+  font-family:"Segoe UI",Tahoma,sans-serif;font-size:14px;line-height:1.5}
+h1,h2{font-family:Georgia,serif;font-weight:normal}
+header{background:var(--nuit);color:#fff;padding:14px 22px}
+header h1{margin:0;font-size:21px}
+header .sub{font-size:12px;color:#9FB2C4;margin-top:2px}
+.wrap{max-width:1030px;margin:0 auto;padding:20px}
+.panel{background:#fff;border:1px solid var(--trait);border-radius:4px;
+  padding:16px 18px;margin-bottom:16px}
+.panel h2{margin:0 0 10px;font-size:16px;border-bottom:2px solid var(--canard);padding-bottom:6px}
+button{font-family:inherit;font-size:14px;padding:9px 16px;border:none;border-radius:3px;
+  background:var(--canard);color:#fff;cursor:pointer}
+button:hover{background:#2A6E75}
+button:disabled{background:var(--gris);cursor:default}
+code{background:var(--pale);color:var(--fonce);padding:1px 5px;border-radius:2px;
+  font-size:12.5px;overflow-wrap:anywhere}
+.chiffres{display:flex;gap:14px;flex-wrap:wrap;margin-bottom:16px}
+.bloc{flex:1;min-width:130px;border:1px solid var(--trait);border-radius:4px;
+  padding:11px 13px;background:#fff}
+.bloc .n{font-size:25px;font-family:Georgia,serif}
+.bloc .l{font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--gris)}
+.b-ok .n{color:var(--vert)} .b-ko .n{color:var(--carmin)} .b-att .n{color:var(--orange)}
+ul{margin:6px 0 0;padding-left:20px;font-size:13px}
+li{margin-bottom:4px}
+.liste{max-height:240px;overflow:auto;border:1px solid var(--trait);border-radius:3px;
+  padding:9px 12px;background:#FAFBFC;margin-top:8px;font-size:12.5px}
+.note{background:#FFF6EA;border-left:3px solid var(--orange);padding:10px 13px;
+  font-size:13px;margin-top:12px}
+.ok{color:var(--vert);font-weight:600} .ko{color:var(--carmin);font-weight:600}
+ol li{margin-bottom:6px}
+table{width:100%;border-collapse:collapse;font-size:12.5px;margin-top:8px}
+th{background:var(--nuit);color:#fff;text-align:left;padding:6px 9px;font-size:10.5px;
+  text-transform:uppercase;letter-spacing:.4px}
+td{border-bottom:1px solid var(--trait);padding:6px 9px;vertical-align:top}
+.fleche{color:var(--gris)}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>XYLO — contrôle et renommage du lot</h1>
+  <div class="sub">Rapproche les fichiers Cerema de la nomenclature XYLO et produit le renommage</div>
+</header>
+
+<div class="wrap">
+
+  <div class="panel">
+    <h2>Marche à suivre</h2>
+    <ol>
+      <li><strong>Choisir le dossier</strong> ci-dessous, puis sélectionner
+        <code>F:\Utilisat\JFD\XYLO</code>.</li>
+      <li>Le rapprochement est immédiat : chaque fichier Cerema est associé à son
+        nom XYLO d'après le risque, le territoire et la date.</li>
+      <li>Télécharger <strong>renommer.bat</strong>, le placer dans ce même dossier
+        et le double-cliquer. Les fichiers prennent leur nom définitif.</li>
+      <li>Déposer les PDF renommés au dépôt, puis me prévenir pour la bascule du
+        référentiel.</li>
+    </ol>
+    <p style="margin:12px 0 0">
+      <input type="file" id="dossier" webkitdirectory directory multiple hidden>
+      <button id="choisir">Choisir le dossier</button>
+      <span id="etat" style="margin-left:10px;color:var(--gris)"></span>
+    </p>
+  </div>
+
+  <div id="resultat" hidden>
+    <div class="chiffres">
+      <div class="bloc b-ok"><div class="n" id="nOk">0</div><div class="l">rapprochés</div></div>
+      <div class="bloc b-att"><div class="n" id="nReste">0</div><div class="l">restant à charger</div></div>
+      <div class="bloc b-ko"><div class="n" id="nProb">0</div><div class="l">à examiner</div></div>
+    </div>
+
+    <div class="panel" id="pBat" hidden>
+      <h2>Renommage</h2>
+      <p id="msgBat" style="margin:0 0 10px"></p>
+      <button id="bat">Télécharger renommer.bat</button>
+      <button id="csv" style="background:var(--pale);color:var(--fonce);margin-left:8px">Télécharger la correspondance</button>
+      <div class="note">
+        Placez <code>renommer.bat</code> <strong>dans le dossier des PDF</strong>, puis
+        double-cliquez. Une fenêtre noire s'ouvre, égrène les renommages et se ferme.
+        Le fichier n'agit que sur les noms qu'il connaît : il ne supprime rien et ne
+        touche à aucun autre fichier.
+        <br><br>
+        Si Windows bloque l'exécution : clic droit sur le fichier →
+        <strong>Propriétés</strong> → case <strong>Débloquer</strong> en bas →
+        <strong>Appliquer</strong>.
+      </div>
+      <div class="liste" id="apercu"></div>
+    </div>
+
+    <div class="panel" id="pProb" hidden>
+      <h2>À examiner</h2>
+      <div id="prob"></div>
+    </div>
+
+    <div class="panel" id="pReste" hidden>
+      <h2>Restant à charger</h2>
+      <div class="liste" id="reste"></div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+"use strict";
+var ARRETES=[{"f":"ap-multi-merule-sansdate.pdf","r":"merule","d":null,"dp":["01","02","09","16","19","24","25","26","50","51","56","71","85","975"],"n":"Bonnay-Saint-Ythaire","u":" "},{"f":"ap-dep02-merule-20251030.pdf","r":"merule","d":"2025-10-30","dp":["02"],"n":"Bourguignon-sous-Montbavin","u":"https://cerema.box.com/s/7wfzps7a7qvf73dxjzf7syqd3daspu7y"},{"f":"ap-10037-merule-20210215.pdf","r":"merule","d":"2021-02-15","dp":["10"],"n":"Bercenay-en-Othe","u":"https://cerema.box.com/s/trnh4ugysqyc1wd5ebgkhwxuzw3x3o2v"},{"f":"ap-10289-merule-20240129.pdf","r":"merule","d":"2024-01-29","dp":["10"],"n":"Plancy-l'Abbaye","u":"https://cerema.box.com/s/sgi6uq8a181th7t7v7mk1d5wt3w16a13"},{"f":"ap-10290-merule-20190319.pdf","r":"merule","d":"2019-03-19","dp":["10"],"n":"Planty","u":"https://cerema.box.com/s/3s19vhtme0khyfb7enr3z6ifiwrktm9v"},{"f":"ap-10362-merule-20190211.pdf","r":"merule","d":"2019-02-11","dp":["10"],"n":"Sainte-Savine","u":"https://cerema.box.com/s/wd9zv1xwd504w8vzeadfdx8q8ppm3sbh"},{"f":"ap-10387-merule-20220114.pdf","r":"merule","d":"2022-01-14","dp":["10"],"n":"Troyes","u":"https://cerema.box.com/s/f9eeawj8biw5w34dt2ora1pi7t6sz5fw"},{"f":"ap-10401-merule-20220301.pdf","r":"merule","d":"2022-03-01","dp":["10"],"n":"Vendeuvre-sur-Barse","u":"https://cerema.box.com/s/b7lrcgv41lnvyv6ez5wzy9w4s0g87m1i"},{"f":"ap-10426-merule-20241108.pdf","r":"merule","d":"2024-11-08","dp":["10"],"n":"Ville-sous-la-Ferté","u":"https://cerema.box.com/s/7d2bnq9ds7tmav0f8pxz2qfwrd8qtmhu"},{"f":"ap-dep14-merule-20240604.pdf","r":"merule","d":"2024-06-04","dp":["14"],"n":"Bayeux","u":"https://cerema.box.com/s/iamhi3r2sl5zpz3vlvgnksxo9cdg787v"},{"f":"ap-16028-merule-20220722.pdf","r":"merule","d":"2022-07-22","dp":["16"],"n":"Barbezieux-Saint-Hilaire","u":"https://cerema.box.com/s/pm1e0bsq3phpfppyi0y0p523pwy4242c"},{"f":"ap-16042-merule-20190507.pdf","r":"merule","d":"2019-05-07","dp":["16"],"n":"Bessé","u":"https://cerema.box.com/s/epyz8n8auhf1lthv33m82wgpghroaqcp"},{"f":"ap-16111-merule-20221208.pdf","r":"merule","d":"2022-12-08","dp":["16"],"n":"Courgeac","u":"https://cerema.box.com/s/woosqivdvfobgv2eq6i3sajjb60j88jv"},{"f":"ap-16113-merule-20231214.pdf","r":"merule","d":"2023-12-14","dp":["16"],"n":"La Couronne","u":"https://cerema.box.com/s/qmgef2gyaxnwclxgdaj5j27xxizr3oac"},{"f":"ap-16175-merule-20190507.pdf","r":"merule","d":"2019-05-07","dp":["16"],"n":"Val des Vignes","u":"https://cerema.box.com/s/s5yf5rok4v34z37yo67olb3ng88m45ok"},{"f":"ap-16292-merule-20190604.pdf","r":"merule","d":"2019-06-04","dp":["16"],"n":"Ruffec","u":"https://cerema.box.com/s/3xcz831qt833j9p51ptsege1stahgqhr"},{"f":"ap-dep19-merule-20230424.pdf","r":"merule","d":"2023-04-24","dp":["19"],"n":"Allassac","u":"https://cerema.box.com/s/mbk6qa86gewjwgwi2f0fqfxqqmicc4un"},{"f":"ap-23020-merule-20241220.pdf","r":"merule","d":"2024-12-20","dp":["23"],"n":"Bellegarde-en-Marche","u":"https://cerema.box.com/s/90ix2b31un4b3pew2a83d1m5xfn1k793"},{"f":"ap-23071-merule-20250506.pdf","r":"merule","d":"2025-05-06","dp":["23"],"n":"Croze","u":"https://cerema.box.com/s/ns3hqtbfw08u6jhkfj4tha1q2jvhv1oc"},{"f":"ap-26309-merule-20210915.pdf","r":"merule","d":"2021-09-15","dp":["26"],"n":"Saint-Julien-en-Vercors","u":"https://cerema.box.com/s/kh28ju858bt2yrx0ryrdx5b9ifefettw"},{"f":"ap-dep27-merule-20251118.pdf","r":"merule","d":"2025-11-18","dp":["27"],"n":"Arnières-sur-Iton","u":"https://cerema.box.com/s/97ge9v4varb4mqlq695jfxm2qfrf85jw"},{"f":"ap-dep29-merule-20240130.pdf","r":"merule","d":"2024-01-30","dp":["29"],"n":"Audierne","u":"https://cerema.box.com/s/i1875f06i01pwrr4z44inji75nhpjuaf"},{"f":"ap-35004-merule-20230921.pdf","r":"merule","d":"2023-09-21","dp":["35"],"n":"Val-Couesnon","u":"https://cerema.box.com/s/64rsezbfykpoomx3wlepjjwv9nayppoa"},{"f":"ap-dep36-merule-20220525.pdf","r":"merule","d":"2022-05-25","dp":["36"],"n":"Aigurande","u":"https://cerema.box.com/s/p2zs6654j76wu2mi9b4v2e9y8epavuar"},{"f":"ap-dep36-merule-20230121.pdf","r":"merule","d":"2023-01-21","dp":["36"],"n":"Ceaulmont","u":"https://cerema.box.com/s/532w4qb697wr61tc8pt6csdm4udb728g"},{"f":"ap-dep36-merule-20250605.pdf","r":"merule","d":"2025-06-05","dp":["36"],"n":"Châteauroux","u":"https://cerema.box.com/s/kcdt5txqd0z2c5ca4am1r9s6vx4t535v"},{"f":"ap-39300-merule-20221114.pdf","r":"merule","d":"2022-11-14","dp":["39"],"n":"Lons-le-Saunier","u":"https://cerema.box.com/s/h9mh6cunukm1y0guaav671c0bkb1j9nt"},{"f":"ap-39500-merule-20170213.pdf","r":"merule","d":"2017-02-13","dp":["39"],"n":"Salins-les-Bains","u":"https://cerema.box.com/s/ppivt9he03gfsh84tpvlpr8is5bbh0az"},{"f":"ap-43080-merule-20211206.pdf","r":"merule","d":"2021-12-06","dp":["43"],"n":"Craponne-sur-Arzon","u":"https://cerema.box.com/s/8f2zciqrnbtf1fo5g0i955o9syhwvtgq"},{"f":"ap-57132-merule-20231204.pdf","r":"merule","d":"2023-12-04","dp":["57"],"n":"Château-Salins","u":"https://cerema.box.com/s/nztzfiw3dzre300hdnjfkse9rvhaphhl"},{"f":"ap-57443-merule-20140115.pdf","r":"merule","d":"2014-01-15","dp":["57"],"n":"Marange-Silvange","u":"https://cerema.box.com/s/fnjcqltdrcz5fvncgm3og76ojcv9l6xw"},{"f":"ap-57543-merule-20160805.pdf","r":"merule","d":"2016-08-05","dp":["57"],"n":"Pierrevillers","u":"https://cerema.box.com/s/z2uosocerj0ud60hlxla6l9fjxosfhgv"},{"f":"ap-dep60-merule-20240418.pdf","r":"merule","d":"2024-04-18","dp":["60"],"n":"Andeville","u":"https://cerema.box.com/s/jpujz22i7w8k23vxl8htw17u82ern4u1"},{"f":"ap-dep61-merule-20250914.pdf","r":"merule","d":"2025-09-14","dp":["61"],"n":"Bagnoles de l'Orne Normandie","u":"https://cerema.box.com/s/799uexsz5nl7af5lyyl7bohtkjlts2zc"},{"f":"ap-63028-merule-20210329.pdf","r":"merule","d":"2021-03-29","dp":["63"],"n":"Bagnols","u":"https://cerema.box.com/s/3pxhft4qz43kn2w9d4lvqnb8aoev01n0"},{"f":"ap-63047-merule-20180511.pdf","r":"merule","d":"2018-05-11","dp":["63"],"n":"La Bourboule","u":"https://cerema.box.com/s/82zmkt7mavhxm0yd27tgiczxd6e5mdfl"},{"f":"ap-63066-merule-20210329.pdf","r":"merule","d":"2021-03-29","dp":["63"],"n":"Celles-sur-Durolle","u":"https://cerema.box.com/s/lo0scmnlqsfgz9ol9433rc30d7tca18m"},{"f":"ap-63113-merule-20200421.pdf","r":"merule","d":"2020-04-21","dp":["63"],"n":"Clermont-Ferrand","u":"https://cerema.box.com/s/a6xpc3w30jkdllnx5ugobcvmt38zbog6"},{"f":"ap-63192-merule-20210409.pdf","r":"merule","d":"2021-04-09","dp":["63"],"n":"La Tour-d'Auvergne","u":"https://cerema.box.com/s/zljc2hec3lqurz0w8n4xor6ngnpj902i"},{"f":"ap-63236-merule-20210208.pdf","r":"merule","d":"2021-02-08","dp":["63"],"n":"Mont-Dore","u":"https://cerema.box.com/s/pyazkjpmzq0pph4urj5brl4i0lkt7hc9"},{"f":"ap-63384-merule-20250317.pdf","r":"merule","d":"2025-03-17","dp":["63"],"n":"Saint-Pierre-la-Bourlhonne","u":"https://cerema.box.com/s/129u1s85ib5g9eoixum7n71gegg3r007"},{"f":"ap-63430-merule-20190617.pdf","r":"merule","d":"2019-06-17","dp":["63"],"n":"Thiers","u":"https://cerema.box.com/s/xug5s5rp83fjloq8kx0qscaj31eikktx"},{"f":"ap-68162-merule-20200824.pdf","r":"merule","d":"2020-08-24","dp":["68"],"n":"Kaysersberg Vignoble","u":"https://cerema.box.com/s/syy4imnzdvaytqz6o5qaqs9vmmrbrq3m"},{"f":"ap-69123-merule-20230530.pdf","r":"merule","d":"2023-05-30","dp":["69"],"n":"Lyon","u":"https://cerema.box.com/s/21vxt4pnbabifh9cncthmjs21o33b1m2"},{"f":"ap-76758-merule-20250318.pdf","r":"merule","d":"2025-03-18","dp":["76"],"n":"Yvetot","u":"https://cerema.box.com/s/xs33a967n30hsldkhqhg1gw2ejvieza7"},{"f":"ap-dep79-merule-20250730.pdf","r":"merule","d":"2025-07-30","dp":["79"],"n":"Amailloux","u":"https://cerema.box.com/s/3m4sswzgfnnyj2ldsketnriuxug1eusj"},{"f":"ap-dep80-merule-20220831.pdf","r":"merule","d":"2022-08-31","dp":["80"],"n":"Abbeville","u":"https://cerema.box.com/s/3k203a4q4skle724i3euufd1nu0q00ji"},{"f":"ap-84007-merule-20200127.pdf","r":"merule","d":"2020-01-27","dp":["84"],"n":"Avignon","u":"https://cerema.box.com/s/zkh8ihzsuc33ctv69ut3d7a22qd5g7oh"},{"f":"ap-88116-merule-20230613.pdf","r":"merule","d":"2023-06-13","dp":["88"],"n":"Cornimont","u":"https://cerema.box.com/s/b5m7m77v4z9erk9dgo163ypjp8n0sw85"},{"f":"ap-88160-merule-20230613.pdf","r":"merule","d":"2023-06-13","dp":["88"],"n":"Épinal","u":"https://cerema.box.com/s/nnaho4k0gbl34cja5tlayd2ppzoeb3fb"},{"f":"ap-88275-merule-20230705.pdf","r":"merule","d":"2023-07-05","dp":["88"],"n":"Lubine","u":"https://cerema.box.com/s/oegsm76xb2a9weg90g5ah0zzdfz1za79"},{"f":"ap-88346-merule-20230905.pdf","r":"merule","d":"2023-09-05","dp":["88"],"n":"La Petite-Raon","u":"https://cerema.box.com/s/wfyakcka7ach8feb32i6bbm0h98rp3ad"},{"f":"ap-88349-merule-20230705.pdf","r":"merule","d":"2023-07-05","dp":["88"],"n":"Plainfaing","u":"https://cerema.box.com/s/bbukmlfop8u77anos5jxls6gfy2yfbqr"},{"f":"ap-88468-merule-20230418.pdf","r":"merule","d":"2023-04-18","dp":["88"],"n":"Le Thillot","u":"https://cerema.box.com/s/4xmle2c7jvvaznfsf3mbw0p5u3ekylm9"},{"f":"ap-88500-merule-20230525.pdf","r":"merule","d":"2023-05-25","dp":["88"],"n":"Ventron","u":"https://cerema.box.com/s/iuzrdus54v1vyotm67xfxaukw0oqu5fl"},{"f":"ap-88526-merule-20230120.pdf","r":"merule","d":"2023-01-20","dp":["88"],"n":"Wisembach","u":"https://cerema.box.com/s/v4ai8hhi6eqc5y2rc5yi245gge78wf3r"},{"f":"ap-multi-termites-sansdate.pdf","r":"termite","d":null,"dp":["01","02","09","19","25","26","50","51","56","71"],"n":"Bazoches-et-Saint-Thibaut","u":" "},{"f":"ap-dep06-termites-20170310.pdf","r":"termite","d":"2017-03-10","dp":["06"],"n":"Antibes","u":"https://cerema.box.com/s/u56wos1ylsq2f8armg0vjkdyxe7r8e9n"},{"f":"ap-09213-termites-20030825.pdf","r":"termite","d":"2003-08-25","dp":["09"],"n":"Moulin-Neuf","u":"https://cerema.box.com/s/hswfjqvil9eagnjcolsbh0nqky4vjp3r"},{"f":"ap-dep11-termites-20010123.pdf","r":"termite","d":"2001-01-23","dp":["11"],"n":"Aigues-Vives","u":"https://cerema.box.com/s/v3khpzk4xpt3t6x25731j7ozht48yjnk"},{"f":"ap-dep12-termites-20030613.pdf","r":"termite","d":"2003-06-13","dp":["12"],"n":"Agen-d'Aveyron","u":"https://cerema.box.com/s/b6chmd6s3obtrhl347v4s9qbhuw629a0"},{"f":"ap-dep13-termites-20010901.pdf","r":"termite","d":"2001-09-01","dp":["13"],"n":"Aix-en-Provence","u":"https://cerema.box.com/s/83wnmatpj0d5bh3g95wfmmqbqz0qbrhj"},{"f":"ap-dep15-termites-20220513.pdf","r":"termite","d":"2022-05-13","dp":["15"],"n":"Arnac","u":"https://cerema.box.com/s/uupsmr28y6x3uj6bigugra71js6xyvqc"},{"f":"ap-dep16-termites-20050308.pdf","r":"termite","d":"2005-03-08","dp":["16"],"n":"Abzac","u":"https://cerema.box.com/s/753vdih58eu2ec8g3j87446bzwwe9fir"},{"f":"ap-dep17-termites-20170127.pdf","r":"termite","d":"2017-01-27","dp":["17"],"n":"Agudelle","u":"https://cerema.box.com/s/uukeqsl7k9y96bok1gbtz15z8y1or2o4"},{"f":"ap-18033-termites-20030619.pdf","r":"termite","d":"2003-06-19","dp":["18"],"n":"Bourges","u":"https://cerema.box.com/s/di17nn60wajvmstr0dnp3i7rfe2w9o6j"},{"f":"ap-dep19-termites-20011214.pdf","r":"termite","d":"2001-12-14","dp":["19"],"n":"Brive-la-Gaillarde","u":"https://cerema.box.com/s/s3nd2ui5q1ja2gl7imhei11i2tev73f4"},{"f":"ap-dep24-termites-20010911.pdf","r":"termite","d":"2001-09-11","dp":["24"],"n":"Abjat-sur-Bandiat","u":"https://cerema.box.com/s/eonioc7e6d2s7qrdsp8cr3z66lwlwkel"},{"f":"ap-26362-termites-20100324.pdf","r":"termite","d":"2010-03-24","dp":["26"],"n":"Valence","u":"https://cerema.box.com/s/2ru0mrwvmrzz89xw321ohbm4pz3fq020"},{"f":"ap-dep2A-termites-20040720.pdf","r":"termite","d":"2004-07-20","dp":["2A"],"n":"Afa","u":"https://cerema.box.com/s/yv7su9l8kizsb15y7cg7ft31iur4t6ay"},{"f":"ap-dep2B-termites-20011127.pdf","r":"termite","d":"2001-11-27","dp":["2B"],"n":"Aghione","u":"https://cerema.box.com/s/lefobt4s8hm0rznxquntv2x73smirdag"},{"f":"ap-dep30-termites-20031015.pdf","r":"termite","d":"2003-10-15","dp":["30"],"n":"Aigaliers","u":"https://cerema.box.com/s/55ruj4sohw1qtow6gxecz0kuagmcw77y"},{"f":"ap-dep31-termites-20011210.pdf","r":"termite","d":"2001-12-10","dp":["31"],"n":"Agassac","u":"https://cerema.box.com/s/rhx20bi6n1mbf823xtt0xevr4pnhgtem"},{"f":"ap-dep32-termites-20020107.pdf","r":"termite","d":"2002-01-07","dp":["32"],"n":"Aignan","u":"https://cerema.box.com/s/th25q7tjk02j18hxouuetn220agezbfe"},{"f":"ap-dep33-termites-20010212.pdf","r":"termite","d":"2001-02-12","dp":["33"],"n":"Abzac","u":"https://cerema.box.com/s/d6y7acmgwjwggr2sa1b9l1os6gu4jap2"},{"f":"ap-dep34-termites-20010620.pdf","r":"termite","d":"2001-06-20","dp":["34"],"n":"Abeilhan","u":"https://cerema.box.com/s/aq857uxk3dmg74ygy4pvsslv5pl4e7in"},{"f":"ap-35332-termites-20070521.pdf","r":"termite","d":"2007-05-21","dp":["35"],"n":"Teillay","u":"https://cerema.box.com/s/jzm5tzfwx2h708p9s0gthfopdofhoyxm"},{"f":"ap-dep36-termites-20210526.pdf","r":"termite","d":"2021-05-26","dp":["36"],"n":"Châteauroux","u":"https://cerema.box.com/s/ymczmt9ly46pvuagxwnvc64pojlll9c9"},{"f":"ap-dep37-termites-20190606.pdf","r":"termite","d":"2019-06-06","dp":["37"],"n":"Azay-le-Rideau","u":"https://cerema.box.com/s/xbysw3hv4wxi78192stwg37nr93k4hnh"},{"f":"ap-dep38-termites-20021001.pdf","r":"termite","d":"2002-10-01","dp":["38"],"n":"Biviers","u":"https://cerema.box.com/s/265hu9wtmoitv5bxetziuqotpjp01zbh"},{"f":"ap-dep40-termites-20020626.pdf","r":"termite","d":"2002-06-26","dp":["40"],"n":"Aire-sur-l'Adour","u":"https://cerema.box.com/s/hwfsd213djdaj5u2etxv6cnfnn91bedm"},{"f":"ap-41241-termites-20121122.pdf","r":"termite","d":"2012-11-22","dp":["41"],"n":"Selles-Saint-Denis","u":"https://cerema.box.com/s/hr2yzqk5ahtrn8dzvcbcqus8ztx95imn"},{"f":"ap-dep44-termites-20181113.pdf","r":"termite","d":"2018-11-13","dp":["44"],"n":"Abbaretz","u":"https://cerema.box.com/s/xm6bl38itdupvo7sjpid01pv21q0bjw4"},{"f":"ap-dep46-termites-20001201.pdf","r":"termite","d":"2000-12-01","dp":["46"],"n":"Albas","u":"https://cerema.box.com/s/09sjg3gese6g7a5z5gb7zz05x267vm21"},{"f":"ap-dep47-termites-20020305.pdf","r":"termite","d":"2002-03-05","dp":["47"],"n":"Agen","u":"https://cerema.box.com/s/xwjhkoldiyw5172o02yk31n567kcr6xc"},{"f":"ap-dep49-termites-20250130.pdf","r":"termite","d":"2025-01-30","dp":["49"],"n":"Allonnes","u":"https://cerema.box.com/s/8kqi4csazep6yoogyrd1olcl9qakl67e"},{"f":"ap-56121-termites-20030603.pdf","r":"termite","d":"2003-06-03","dp":["56"],"n":"Lorient","u":"https://cerema.box.com/s/i66wjsxacdsjcdy4jmq72kl49afiwkmo"},{"f":"ap-56240-termites-20031211.pdf","r":"termite","d":"2003-12-11","dp":["56"],"n":"Sarzeau","u":"https://cerema.box.com/s/dj0dftqlk7ltq4s8ag9p10e56g3dqc7w"},{"f":"ap-62193-termites-20031122.pdf","r":"termite","d":"2003-11-22","dp":["62"],"n":"Calais","u":"https://cerema.box.com/s/kdtpubjbkmp0c2xnayhrm82kvop6q92b"},{"f":"ap-dep64-termites-20010816.pdf","r":"termite","d":"2001-08-16","dp":["64"],"n":"Aast","u":"https://cerema.box.com/s/sxzn50eosafht9l5xtqpwuf5cmgutx13"},{"f":"ap-dep65-termites-20090526.pdf","r":"termite","d":"2009-05-26","dp":["65"],"n":"Adast","u":"https://cerema.box.com/s/zg4u78gai93h5j5lcj5y8voal81h9klu"},{"f":"ap-dep66-termites-20010327.pdf","r":"termite","d":"2001-03-27","dp":["66"],"n":"Alénya","u":"https://cerema.box.com/s/mnkdp9tltl7p57wjug1maq4yqa3dzho9"},{"f":"ap-69123-termites-20090527.pdf","r":"termite","d":"2009-05-27","dp":["69"],"n":"Lyon","u":"https://cerema.box.com/s/lpyqacxcv8clve8p6n1yp3amor91vg1c"},{"f":"ap-dep69-termites-20080604.pdf","r":"termite","d":"2008-06-04","dp":["69"],"n":"Francheville","u":"https://cerema.box.com/s/qang5cft4rvufq5twea5cqhrmxo6t59b"},{"f":"ap-72001-termites-20090827.pdf","r":"termite","d":"2009-08-27","dp":["72"],"n":"Aigné","u":"https://cerema.box.com/s/89160b1kor4luumx2gh6wzlo38sjl0xi"},{"f":"ap-72003-termites-20100525.pdf","r":"termite","d":"2010-05-25","dp":["72"],"n":"Allonnes","u":"https://cerema.box.com/s/4z8xbi0nd3ldqj4tdeg4wjecd9pkigaz"},{"f":"ap-72008-termites-20010313.pdf","r":"termite","d":"2001-03-13","dp":["72"],"n":"Arnage","u":"https://cerema.box.com/s/19kxjscsi3biy44iff7wxewdwn25v6es"},{"f":"ap-72029-termites-20241030.pdf","r":"termite","d":"2024-10-30","dp":["72"],"n":"Beaumont-sur-Sarthe","u":"https://cerema.box.com/s/hr8qv8rz34swd7tnyaa455kbdn9w0eet"},{"f":"ap-72058-termites-20230330.pdf","r":"termite","d":"2023-03-30","dp":["72"],"n":"Changé","u":"https://cerema.box.com/s/cckeujlrnl6d3phgorcxrcrjlyvvvwqf"},{"f":"ap-72146-termites-20220307.pdf","r":"termite","d":"2022-03-07","dp":["72"],"n":"Guécélard","u":"https://cerema.box.com/s/ynbkqb4i2g5foz5muh1g5nlcpbnmmxrs"},{"f":"ap-72147-termites-20030428.pdf","r":"termite","d":"2003-04-28","dp":["72"],"n":"La Guierche","u":"https://cerema.box.com/s/lmqz7poc0dbn770q0294jutbchahzk6i"},{"f":"ap-72181-termites-20240411.pdf","r":"termite","d":"2024-04-11","dp":["72"],"n":"Le Mans","u":"https://cerema.box.com/s/wnppo1i39aogc7fkaren21i7eszprx0z"},{"f":"ap-72223-termites-20050318.pdf","r":"termite","d":"2005-03-18","dp":["72"],"n":"Noyen-sur-Sarthe","u":"https://cerema.box.com/s/akkg11cdc8nfxza6wjiantnnn80m180d"},{"f":"ap-72254-termites-20230120.pdf","r":"termite","d":"2023-01-20","dp":["72"],"n":"Rouessé-Fontaine","u":"https://cerema.box.com/s/ejp99h8ct3jaq3efrmcjkt5wurhgoewc"},{"f":"ap-72339-termites-20141031.pdf","r":"termite","d":"2014-10-31","dp":["72"],"n":"Souligné-Flacé","u":"https://cerema.box.com/s/l83cszx1xc138n2av5q3ot3yk5ss4uqe"},{"f":"ap-72350-termites-20060524.pdf","r":"termite","d":"2006-05-24","dp":["72"],"n":"Teloché","u":"https://cerema.box.com/s/a00yuohqdgkitzficqwuchy29ufps3sc"},{"f":"ap-72380-termites-20230315.pdf","r":"termite","d":"2023-03-15","dp":["72"],"n":"Vivoin","u":"https://cerema.box.com/s/4yq3ni8zxjxz9foacw8k7p7ms5s6xhg1"},{"f":"ap-dep75-termites-20120925.pdf","r":"termite","d":"2012-09-25","dp":["75"],"n":"Paris","u":"https://cerema.box.com/s/oubk0w5tdklhw90apmy4macb0eczw9pp"},{"f":"ap-dep76-termites-20230612.pdf","r":"termite","d":"2023-06-12","dp":["76"],"n":"Le Petit-Quevilly","u":"https://cerema.box.com/s/c0oyhk9o53dyp6pn834h0g252ns0njjw"},{"f":"ap-dep78-termites-20171026.pdf","r":"termite","d":"2017-10-26","dp":["78"],"n":"Achères","u":"https://cerema.box.com/s/g3b1nilan4k3q083lkfhgkw0mjmv64xp"},{"f":"ap-dep79-termites-20250730.pdf","r":"termite","d":"2025-07-30","dp":["79"],"n":"Aiffres","u":"https://cerema.box.com/s/fv63dpw7o6dx1sxd4u9mtkbe1tr5dkrl"},{"f":"ap-dep81-termites-20021029.pdf","r":"termite","d":"2002-10-29","dp":["81"],"n":"Aguts","u":"https://cerema.box.com/s/85px0dpknoa9qz33vn7lrzncslgu0x35"},{"f":"ap-dep82-termites-20000706.pdf","r":"termite","d":"2000-07-06","dp":["82"],"n":"Albefeuille-Lagarde","u":"https://cerema.box.com/s/wdr6rnlwv2a6l2mv87nsciwuzxqcwtgt"},{"f":"ap-dep83-termites-20181210.pdf","r":"termite","d":"2018-12-10","dp":["83"],"n":"Aups","u":"https://cerema.box.com/s/wr5yvutg0ww2ykfzqq1i98h0p57ktuoq"},{"f":"ap-84025-termites-20020604.pdf","r":"termite","d":"2002-06-04","dp":["84"],"n":"Cabrières-d'Avignon","u":"https://cerema.box.com/s/0ot5eb6hmktgogk4dzipfff9ym4rg12u"},{"f":"ap-84047-termites-20010829.pdf","r":"termite","d":"2001-08-29","dp":["84"],"n":"Gargas","u":"https://cerema.box.com/s/oa6uftlcq8463u4a6k34yzuoono560z1"},{"f":"ap-84102-termites-20130916.pdf","r":"termite","d":"2013-09-16","dp":["84"],"n":"Roussillon","u":"https://cerema.box.com/s/iq86zucqqr1ibj5t0wlemsfhri4z66sm"},{"f":"ap-dep84-termites-20010406.pdf","r":"termite","d":"2001-04-06","dp":["84"],"n":"Ansouis","u":"https://cerema.box.com/s/dg3mtbsnnn6te97do6qoyw7eapmyanp1"},{"f":"ap-dep85-termites-20080619.pdf","r":"termite","d":"2008-06-19","dp":["85"],"n":"Aizenay","u":"https://cerema.box.com/s/o1pyaqs6ix44uf3742vl72k7ztvk4pt2"},{"f":"ap-dep86-termites-20201014.pdf","r":"termite","d":"2020-10-14","dp":["86"],"n":"Angliers","u":"https://cerema.box.com/s/4kmfifp6h7d57qr3ij84wkkka5v1eh3w"},{"f":"ap-91027-termites-20020222.pdf","r":"termite","d":"2002-02-22","dp":["91"],"n":"Athis-Mons","u":"https://cerema.box.com/s/lhbaahnuklnp3mzmw3uih53i30t83gp3"},{"f":"ap-91045-termites-20010903.pdf","r":"termite","d":"2001-09-03","dp":["91"],"n":"Ballancourt-sur-Essonne","u":"https://cerema.box.com/s/zeo6agv3ubd68y3tbd0bspz6l5zlwrxv"},{"f":"ap-91103-termites-20230531.pdf","r":"termite","d":"2023-05-31","dp":["91"],"n":"Brétigny-sur-Orge","u":"https://cerema.box.com/s/wzl6jak62y74dmm85lmnzw05w7bhwm7q"},{"f":"ap-91179-termites-20030328.pdf","r":"termite","d":"2003-03-28","dp":["91"],"n":"Le Coudray-Montceaux","u":"https://cerema.box.com/s/xrbtv51c3b9sxyxo4iwes80z8u92f0la"},{"f":"ap-91223-termites-20060426.pdf","r":"termite","d":"2006-04-26","dp":["91"],"n":"Étampes","u":"https://cerema.box.com/s/yggyg8c6kcspuhjgjpnfggf4qz8b0700"},{"f":"ap-91326-termites-20010903.pdf","r":"termite","d":"2001-09-03","dp":["91"],"n":"Juvisy-sur-Orge","u":"https://cerema.box.com/s/iec5u2biiuzqjciloqh7inusig4wqatu"},{"f":"ap-91405-termites-20010518.pdf","r":"termite","d":"2001-05-18","dp":["91"],"n":"Milly-la-Forêt","u":"https://cerema.box.com/s/6736uk6cn2ontwpjt375uqwr7whisyon"},{"f":"ap-91479-termites-20230109.pdf","r":"termite","d":"2023-01-09","dp":["91"],"n":"Paray-Vieille-Poste","u":"https://cerema.box.com/s/uxnd8vnedvg2pbh6usz0rws63aqpuvvi"},{"f":"ap-91589-termites-20230109.pdf","r":"termite","d":"2023-01-09","dp":["91"],"n":"Savigny-sur-Orge","u":"https://cerema.box.com/s/lhmoxoti4xg9zw6akja6rp7eqlsj5iwa"},{"f":"ap-91667-termites-20250930.pdf","r":"termite","d":"2025-09-30","dp":["91"],"n":"Villemoisson-sur-Orge","u":"https://cerema.box.com/s/7gxmdthpxjgk4oaqs9hhebpcy2euaxpj"},{"f":"ap-91687-termites-20050113.pdf","r":"termite","d":"2005-01-13","dp":["91"],"n":"Viry-Châtillon","u":"https://cerema.box.com/s/9hcho940w67g793weojvi154j1d1ccxg"},{"f":"ap-91691-termites-20020415.pdf","r":"termite","d":"2002-04-15","dp":["91"],"n":"Yerres","u":"https://cerema.box.com/s/pj7jitbjwiiwmtvktmqh13ctuzc8hd74"},{"f":"ap-dep92-termites-20041222.pdf","r":"termite","d":"2004-12-22","dp":["92"],"n":"Antony","u":"https://cerema.box.com/s/9xs7f9siwbslhdtdln1spvr7xcrt22xl"},{"f":"ap-93006-termites-20030117.pdf","r":"termite","d":"2003-01-17","dp":["93"],"n":"Bagnolet","u":"https://cerema.box.com/s/jmkklwfsr816zejnonofcpyr3g79fp5u"},{"f":"ap-93007-termites-20051102.pdf","r":"termite","d":"2005-11-02","dp":["93"],"n":"Le Blanc-Mesnil","u":"https://cerema.box.com/s/vz9hhqtzggsf2qaik11iomn2suq856x8"},{"f":"ap-93008-termites-20150129.pdf","r":"termite","d":"2015-01-29","dp":["93"],"n":"Bobigny","u":"https://cerema.box.com/s/dmrvm5e6p01p4t2b69btpyfl5lr5olmi"},{"f":"ap-93029-termites-20100817.pdf","r":"termite","d":"2010-08-17","dp":["93"],"n":"Drancy","u":"https://cerema.box.com/s/6pb45i7xxwaqlpgh9y8b522o3jsqkcbs"},{"f":"ap-93045-termites-20051102.pdf","r":"termite","d":"2005-11-02","dp":["93"],"n":"Les Lilas","u":"https://cerema.box.com/s/ev9v52i3ey74qejoya1mmwsiw6v6jx22"},{"f":"ap-93046-termites-20011005.pdf","r":"termite","d":"2001-10-05","dp":["93"],"n":"Livry-Gargan","u":"https://cerema.box.com/s/k6ybm77ti7xk22zsq27xcmsp704927mh"},{"f":"ap-93048-termites-20051102.pdf","r":"termite","d":"2005-11-02","dp":["93"],"n":"Montreuil","u":"https://cerema.box.com/s/nan3usv8yhmdqaolw3lwnf4tjyjl8kqn"},{"f":"ap-93062-termites-20200706.pdf","r":"termite","d":"2020-07-06","dp":["93"],"n":"Le Raincy","u":"https://cerema.box.com/s/k3tapf7hs6y7gsuj1fggll4b1c9uh8vk"},{"f":"ap-93070-termites-20011005.pdf","r":"termite","d":"2001-10-05","dp":["93"],"n":"Saint-Ouen-sur-Seine","u":"https://cerema.box.com/s/fpm8zhd95u12argbpj3bl519pm63jsoi"},{"f":"ap-94022-termites-20150407.pdf","r":"termite","d":"2015-04-07","dp":["94"],"n":"Choisy-le-Roi","u":"https://cerema.box.com/s/g6183uz5rk2o1bu17n3a00o4pfoya6rc"},{"f":"ap-94028-termites-20111028.pdf","r":"termite","d":"2011-10-28","dp":["94"],"n":"Créteil","u":"https://cerema.box.com/s/qqruf1x5q30zzkhii71mk4br2s5tnbdl"},{"f":"ap-94033-termites-20160816.pdf","r":"termite","d":"2016-08-16","dp":["94"],"n":"Fontenay-sous-Bois","u":"https://cerema.box.com/s/pvyf1camf7uzx3mckh92xgi5qj2awqw1"},{"f":"ap-94037-termites-20131118.pdf","r":"termite","d":"2013-11-18","dp":["94"],"n":"Gentilly","u":"https://cerema.box.com/s/yrizuubgylijyveec4l4q99yk0cb7gxy"},{"f":"ap-94041-termites-20011016.pdf","r":"termite","d":"2001-10-16","dp":["94"],"n":"Ivry-sur-Seine","u":"https://cerema.box.com/s/ibigk88dgy9iqjw7dq30r42ujyx2h3vp"},{"f":"ap-94046-termites-20010709.pdf","r":"termite","d":"2001-07-09","dp":["94"],"n":"Maisons-Alfort","u":"https://cerema.box.com/s/m72y3p6tos5k57ujs7w4mnzi2jib1938"},{"f":"ap-94054-termites-20221013.pdf","r":"termite","d":"2022-10-13","dp":["94"],"n":"Orly","u":"https://cerema.box.com/s/wyicfp2v3k57xzt88ecei95ho8hxih8x"},{"f":"ap-94068-termites-20140630.pdf","r":"termite","d":"2014-06-30","dp":["94"],"n":"Saint-Maur-des-Fossés","u":"https://cerema.box.com/s/eem8dtn9s34x4wbg24i6ua8vltrbh8tt"},{"f":"ap-94076-termites-20130904.pdf","r":"termite","d":"2013-09-04","dp":["94"],"n":"Villejuif","u":"https://cerema.box.com/s/pi57d9md5w7gtpxtbe5lbf0a8lp8vkrx"},{"f":"ap-94079-termites-20011113.pdf","r":"termite","d":"2001-11-13","dp":["94"],"n":"Villiers-sur-Marne","u":"https://cerema.box.com/s/1wd8e2ycveyp8a1ld1cn09di0197dh3m"},{"f":"ap-94081-termites-20171116.pdf","r":"termite","d":"2017-11-16","dp":["94"],"n":"Vitry-sur-Seine","u":"https://cerema.box.com/s/e61k5vazfcqfsaog0c4cvnx8fupqso1m"},{"f":"ap-95210-termites-20121113.pdf","r":"termite","d":"2012-11-13","dp":["95"],"n":"Enghien-les-Bains","u":"https://cerema.box.com/s/yl0jpoqekrxhvklyjl23zvkhuxn4melv"},{"f":"ap-dep971-termites-20010511.pdf","r":"termite","d":"2001-05-11","dp":["971"],"n":"Anse-Bertrand","u":"https://cerema.box.com/s/56w9wsv5gkp0981xotgfjeptg9fygnj6"},{"f":"ap-dep972-termites-20010426.pdf","r":"termite","d":"2001-04-26","dp":["972"],"n":"Basse-Pointe","u":"https://cerema.box.com/s/zvgsviewrjwf8zh2vxypv3rbzeqnrw6a"},{"f":"ap-dep973-termites-20030226.pdf","r":"termite","d":"2003-02-26","dp":["973"],"n":"Apatou","u":"https://cerema.box.com/s/iy4869ny9gumvg2w7scjadsq1yejshz2"},{"f":"ap-dep974-termites-20010411.pdf","r":"termite","d":"2001-04-11","dp":["974"],"n":"Bras-Panon","u":"https://cerema.box.com/s/kt2s9jfvwzn972t81n3883fqp6lkndrm"}];
+var DEPS={"01":"Ain","02":"Aisne","03":"Allier","04":"Alpes-de-Haute-Provence","05":"Hautes-Alpes","06":"Alpes-Maritimes","07":"Ardeche","08":"Ardennes","09":"Ariege","10":"Aube","11":"Aude","12":"Aveyron","13":"Bouches-du-Rhone","14":"Calvados","15":"Cantal","16":"Charente","17":"Charente-Maritime","18":"Cher","19":"Correze","21":"Cote-d-Or","22":"Cotes-d-Armor","23":"Creuse","24":"Dordogne","25":"Doubs","26":"Drome","27":"Eure","28":"Eure-et-Loir","29":"Finistere","2A":"Corse-du-Sud","2B":"Haute-Corse","30":"Gard","31":"Haute-Garonne","32":"Gers","33":"Gironde","34":"Herault","35":"Ille-et-Vilaine","36":"Indre","37":"Indre-et-Loire","38":"Isere","39":"Jura","40":"Landes","41":"Loir-et-Cher","42":"Loire","43":"Haute-Loire","44":"Loire-Atlantique","45":"Loiret","46":"Lot","47":"Lot-et-Garonne","48":"Lozere","49":"Maine-et-Loire","50":"Manche","51":"Marne","52":"Haute-Marne","53":"Mayenne","54":"Meurthe-et-Moselle","55":"Meuse","56":"Morbihan","57":"Moselle","58":"Nievre","59":"Nord","60":"Oise","61":"Orne","62":"Pas-de-Calais","63":"Puy-de-Dome","64":"Pyrenees-Atlantiques","65":"Hautes-Pyrenees","66":"Pyrenees-Orientales","67":"Bas-Rhin","68":"Haut-Rhin","69":"Rhone","70":"Haute-Saone","71":"Saone-et-Loire","72":"Sarthe","73":"Savoie","74":"Haute-Savoie","75":"Paris","76":"Seine-Maritime","77":"Seine-et-Marne","78":"Yvelines","79":"Deux-Sevres","80":"Somme","81":"Tarn","82":"Tarn-et-Garonne","83":"Var","84":"Vaucluse","85":"Vendee","86":"Vienne","87":"Haute-Vienne","88":"Vosges","89":"Yonne","90":"Territoire-de-Belfort","91":"Essonne","92":"Hauts-de-Seine","93":"Seine-Saint-Denis","94":"Val-de-Marne","95":"Val-d-Oise","971":"Guadeloupe","972":"Martinique","973":"Guyane","974":"La-Reunion","975":"Saint-Pierre-et-Miquelon","976":"Mayotte"};
+
+/* ---------- normalisation ---------- */
+function norm(s){
+  return String(s || "")
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+    .toUpperCase().replace(/[^A-Z0-9]/g, "");
+}
+/* index des départements par nom normalisé */
+var DEP_PAR_NOM = {};
+Object.keys(DEPS).forEach(function(c){ DEP_PAR_NOM[norm(DEPS[c])] = c; });
+
+/* ---------- lecture d'un nom Cerema ----------
+   AP_{RISQUE}_{DEPARTEMENT}[_{COMMUNE}]_{JJMMAAAA}.pdf
+   éventuellement suivi de " _ Avec la technologie Box.pdf" */
+function lireNom(nom){
+  var t = nom.replace(/\s*_\s*Avec la technologie Box\s*/i, "")
+             .replace(/\.pdf/gi, "")
+             .replace(/\s*\(\d+\)\s*$/, "")      /* doublon Chrome */
+             .trim();
+  var parts = t.split("_").filter(Boolean);
+  if (!parts.length || norm(parts[0]) !== "AP") return null;
+
+  /* Le Cerema mêle deux formats sans prévenir : JJMMAAAA
+     (AP_MERULE_AISNE_30102025 = 30/10/2025) et AAAAMMJJ
+     (AP_MERULE_AUBE_BERCENAY-EN-OTHE_20210215 = 15/02/2021).
+     On retient les deux lectures plausibles et c'est le référentiel
+     qui tranche. */
+  var dates = [];
+  var dernier = String(parts[parts.length - 1] || "");
+  if (/^\d{8}$/.test(dernier)) {
+    var jmA = dernier.slice(4) + "-" + dernier.slice(2, 4) + "-" + dernier.slice(0, 2);
+    var aMJ = dernier.slice(0, 4) + "-" + dernier.slice(4, 6) + "-" + dernier.slice(6);
+    function plausible(d){
+      var p = d.split("-"), an = +p[0], mo = +p[1], jo = +p[2];
+      return an >= 1990 && an <= 2100 && mo >= 1 && mo <= 12 && jo >= 1 && jo <= 31;
+    }
+    if (plausible(jmA)) dates.push(jmA);
+    if (plausible(aMJ) && dates.indexOf(aMJ) < 0) dates.push(aMJ);
+    parts.pop();
+  }
+
+  var risque = null;
+  if (parts[1]) {
+    var r = norm(parts[1]);
+    if (r.indexOf("TERMITE") === 0) risque = "termite";
+    else if (r.indexOf("MERULE") === 0) risque = "merule";
+  }
+  var reste = parts.slice(2);
+  var dep = null, commune = null;
+  if (reste.length) {
+    var cand = norm(reste[0]);
+    if (DEP_PAR_NOM[cand]) { dep = DEP_PAR_NOM[cand]; reste = reste.slice(1); }
+    if (reste.length) commune = reste.join("-");
+  }
+  return { risque: risque, dep: dep, commune: commune, dates: dates, brut: t };
+}
+
+/* ---------- rapprochement ---------- */
+function rapprocher(lu){
+  if (!lu || !lu.risque) return { motif: "nom illisible" };
+  /* La date doit correspondre strictement. Un arrêté sans date au
+     référentiel ne peut être candidat que pour un fichier sans date :
+     sinon il se glisserait parmi les candidats de tous les autres. */
+  var candidats = ARRETES.filter(function(a){
+    if (a.r !== lu.risque) return false;
+    if (lu.dates.length) return a.d && lu.dates.indexOf(a.d) >= 0;
+    return !a.d;
+  });
+  if (!candidats.length) return { motif: "aucun arrêté du référentiel ne correspond (risque et date)" };
+  if (candidats.length === 1) return { a: candidats[0] };
+
+  /* départager par le département */
+  if (lu.dep) {
+    var parDep = candidats.filter(function(a){ return a.dp.indexOf(lu.dep) >= 0; });
+    if (parDep.length === 1) return { a: parDep[0] };
+    if (parDep.length) candidats = parDep;
+  }
+  /* puis par le nom de commune */
+  if (lu.commune) {
+    var c = norm(lu.commune);
+    var parNom = candidats.filter(function(a){ return norm(a.n) === c; });
+    if (parNom.length === 1) return { a: parNom[0] };
+    var partiel = candidats.filter(function(a){
+      var an = norm(a.n);
+      return an && (an.indexOf(c) >= 0 || c.indexOf(an) >= 0);
+    });
+    if (partiel.length === 1) return { a: partiel[0] };
+  }
+  return { motif: candidats.length + " arrêtés possibles : " +
+    candidats.slice(0, 3).map(function(a){ return a.f; }).join(", ") };
+}
+
+/* ---------- traitement du dossier ---------- */
+var paires = [], soucis = [], reste = [];
+
+document.getElementById("choisir").addEventListener("click", function(){
+  document.getElementById("dossier").click();
+});
+
+document.getElementById("dossier").addEventListener("change", async function(e){
+  var fichiers = Array.prototype.slice.call(e.target.files || []);
+  if (!fichiers.length) return;
+  document.getElementById("etat").textContent = "analyse de " + fichiers.length + " élément(s)…";
+  paires = []; soucis = [];
+  var pris = {};
+
+  for (var i = 0; i < fichiers.length; i++) {
+    var f = fichiers[i], nom = f.name;
+    if (/^xylo-avancement.*\.json$/i.test(nom)) continue;
+    if (/^renommer\.bat$/i.test(nom)) continue;
+    if (!/\.pdf$/i.test(nom)) { soucis.push({ nom: nom, motif: "n'est pas un PDF" }); continue; }
+
+    /* déjà au format XYLO : rien à faire */
+    var dejaBon = ARRETES.filter(function(a){ return a.f === nom; })[0];
+    if (dejaBon) { pris[dejaBon.f] = true; continue; }
+
+    if (f.size < 20 * 1024) {
+      soucis.push({ nom: nom, motif: "trop léger (" + Math.round(f.size / 1024) +
+        " ko) : probablement une page d'erreur, à refaire" });
+      continue;
+    }
+    try {
+      var o = new Uint8Array(await f.slice(0, 8).arrayBuffer());
+      if (!(o[0] === 0x25 && o[1] === 0x50 && o[2] === 0x44 && o[3] === 0x46)) {
+        soucis.push({ nom: nom, motif: "contenu illisible malgré l'extension .pdf" });
+        continue;
+      }
+    } catch (err) { /* lecture impossible : on continue */ }
+
+    var res = rapprocher(lireNom(nom));
+    if (res.motif) { soucis.push({ nom: nom, motif: res.motif }); continue; }
+    if (pris[res.a.f]) {
+      soucis.push({ nom: nom, motif: "doublon : " + res.a.f + " est déjà pourvu" });
+      continue;
+    }
+    pris[res.a.f] = true;
+    paires.push({ de: nom, vers: res.a.f, commune: res.a.n });
+  }
+
+  reste = ARRETES.filter(function(a){ return !pris[a.f]; });
+  afficher(fichiers.length);
+});
+
+function afficher(nbFichiers){
+  document.getElementById("resultat").hidden = false;
+  document.getElementById("etat").textContent = nbFichiers + " élément(s) analysé(s).";
+  var dejaBons = ARRETES.length - reste.length - paires.length;
+  document.getElementById("nOk").textContent = paires.length + dejaBons;
+  document.getElementById("nReste").textContent = reste.length;
+  document.getElementById("nProb").textContent = soucis.length;
+
+  /* renommage */
+  document.getElementById("pBat").hidden = (paires.length === 0);
+  if (paires.length) {
+    document.getElementById("msgBat").innerHTML =
+      '<span class="ok">' + paires.length + " fichier(s) à renommer</span>" +
+      (dejaBons ? " · " + dejaBons + " déjà au bon nom" : "") + ".";
+    var t = document.getElementById("apercu");
+    t.innerHTML = "<table><thead><tr><th>Nom actuel</th><th></th><th>Nouveau nom</th></tr></thead><tbody>" +
+      paires.map(function(p){
+        return "<tr><td>" + p.de + '</td><td class="fleche">→</td><td><code>' +
+          p.vers + "</code><br><span style='color:#8A94A0'>" + (p.commune || "") +
+          "</span></td></tr>";
+      }).join("") + "</tbody></table>";
+  }
+
+  /* soucis */
+  document.getElementById("pProb").hidden = (soucis.length === 0);
+  document.getElementById("prob").innerHTML = soucis.length
+    ? "<ul>" + soucis.map(function(s){
+        return "<li><code>" + s.nom + "</code> — " + s.motif + "</li>";
+      }).join("") + "</ul>"
+    : "";
+
+  /* restant */
+  document.getElementById("pReste").hidden = (reste.length === 0);
+  document.getElementById("reste").innerHTML = reste.length
+    ? reste.map(function(a){
+        return "<code>" + a.f + "</code> — " + (a.n || "") ;
+      }).join("<br>")
+    : "";
+}
+
+/* ---------- sorties ---------- */
+function telecharger(nom, texte, type){
+  var a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([texte], { type: type || "text/plain;charset=utf-8" }));
+  a.download = nom;
+  document.body.appendChild(a); a.click(); a.remove();
+}
+
+document.getElementById("bat").addEventListener("click", function(){
+  var L = [];
+  L.push("@echo off");
+  L.push("chcp 65001 >nul");
+  L.push("rem XYLO - renommage des arretes telecharges depuis le Cerema");
+  L.push("rem A placer dans le dossier des PDF, puis double-cliquer.");
+  L.push("setlocal");
+  L.push("cd /d \"%~dp0\"");
+  L.push("set /a ok=0");
+  L.push("set /a ko=0");
+  L.push("");
+  paires.forEach(function(p){
+    /* les noms comportent des espaces : guillemets obligatoires.
+       ren refuse un nom de destination existant, ce qui protege
+       contre un ecrasement accidentel. */
+    L.push('if exist "' + p.de + '" (');
+    L.push('  ren "' + p.de + '" "' + p.vers + '" && set /a ok+=1 || set /a ko+=1');
+    L.push(') else ( set /a ko+=1 )');
+  });
+  L.push("");
+  L.push("echo.");
+  L.push("echo Renommes : %ok%");
+  L.push("echo Echecs   : %ko%");
+  L.push("echo.");
+  L.push("pause");
+  /* CRLF et cp850 seraient plus orthodoxes ; utf-8 avec chcp 65001 suffit
+     et evite les accents mal rendus dans les noms de fichiers */
+  telecharger("renommer.bat", L.join("\r\n") + "\r\n");
+});
+
+document.getElementById("csv").addEventListener("click", function(){
+  var L = ["nom_cerema;nom_xylo;commune"];
+  paires.forEach(function(p){
+    L.push('"' + p.de + '";"' + p.vers + '";"' + (p.commune || "") + '"');
+  });
+  telecharger("correspondance-arretes.csv", "\ufeff" + L.join("\r\n") + "\r\n",
+    "text/csv;charset=utf-8");
+});
+</script>
+</body>
+</html>
