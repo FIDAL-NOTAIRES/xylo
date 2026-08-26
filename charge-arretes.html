@@ -66,12 +66,21 @@ input[type=checkbox]{width:17px;height:17px;cursor:pointer}
   font-size:13px;margin-top:12px}
 .vide{padding:22px;text-align:center;color:var(--gris)}
 </style>
+
+<style>
+.copier{margin-left:6px;font:11px/1 system-ui,sans-serif;padding:4px 7px;border:1px solid #c9d4e2;background:#fff;border-radius:5px;cursor:pointer;color:#274b6d}
+.copier:hover{background:#eef4fb}
+.fich{display:block;margin-top:5px;font:12px/1.4 ui-monospace,Consolas,Menlo,monospace;color:#1f4e79;word-break:break-all;cursor:copy}
+#toast{position:fixed;left:50%;bottom:26px;transform:translateX(-50%);max-width:92vw;background:#12233a;color:#fff;padding:13px 20px;border-radius:9px;font:14px/1.5 system-ui,sans-serif;box-shadow:0 8px 28px rgba(0,0,0,.28);z-index:9999;display:none;text-align:center}
+#toast code{background:rgba(255,255,255,.16);padding:2px 7px;border-radius:4px;font-size:13px}
+#toast.rate{background:#8a1c1c}
+</style>
 </head>
 <body>
 
 <header>
   <h1>XYLO — chargement des arrêtés</h1>
-  <div class="sub">158 arrêtés à enregistrer dans F:\Utilisat\JFD\XYLO — sans les renommer · FIDAL Notaires Paris</div>
+  <div class="sub">158 arrêtés à enregistrer dans F:\Utilisat\JFD\XYLO — en collant le nom indiqué · FIDAL Notaires Paris</div>
 </header>
 
 <div class="bar">
@@ -92,8 +101,7 @@ input[type=checkbox]{width:17px;height:17px;cursor:pointer}
       <li>Cliquez sur <strong>Ouvrir</strong> : l'arrêté s'affiche dans un nouvel onglet.</li>
       <li><kbd>Ctrl</kbd> + <kbd>P</kbd>, destination
         <strong>« Enregistrer au format PDF »</strong>, <strong>Enregistrer</strong>.</li>
-      <li><strong>Ne touchez pas au nom du fichier</strong>, laissez celui qui est
-        proposé. Vérifiez seulement le dossier, puis <strong>Enregistrer</strong>.</li>
+      <li><strong>Collez le nom du fichier.</strong> Il a été copié automatiquement au moment où vous avez cliqué sur « Ouvrir ». Dans la boîte <strong>Enregistrer</strong>, sélectionnez le nom proposé (<kbd>Ctrl</kbd>+<kbd>A</kbd>), collez (<kbd>Ctrl</kbd>+<kbd>V</kbd>), puis <strong>Enregistrer</strong>. Le nom exact est aussi affiché sous chaque bouton « Ouvrir » : le bouton <strong>Copier le nom</strong> le remet dans le presse-papiers à tout moment.</li>
       <li>Fermez l'onglet, revenez ici, <strong>cochez la case</strong>. Suivant.</li>
     </ol>
     <p style="margin:10px 0 0;font-size:13px;color:#8A94A0">Le dossier n'est à choisir
@@ -223,7 +231,9 @@ function dessiner(){
     if (faits[a.fichier]) tr.className = "fait";
     tr.innerHTML =
       '<td class="coche"><input type="checkbox"' + (faits[a.fichier] ? " checked" : "") + '></td>' +
-      '<td><button class="ouvrir" data-ouvrir="1">Ouvrir</button></td>' +
+      '<td><button class="ouvrir" data-ouvrir="1">Ouvrir</button>' +
+          '<button class="copier" data-copier="1" title="Copier le nom du fichier">Copier le nom</button>' +
+          '<span class="fich" title="Nom \u00e0 donner au PDF">' + esc(a.fichier) + '</span></td>' +
       '<td><span class="pastille p-' + a.risque + '">' +
         (a.risque === "merule" ? "Mérule" : "Termites") + '</span> ' +
         esc(a.exemple_nom || "—") +
@@ -238,7 +248,8 @@ function dessiner(){
       tr.className = this.checked ? "fait" : "";
     });
     tr.querySelector("[data-ouvrir]").addEventListener("click", function(){
-      window.open(a.url, "_blank", "noopener");
+      if (!(a.url || "").trim()) { alert("Aucun lien en ligne pour cet arr\u00eat\u00e9 : " + a.fichier); return; }
+            window.open(a.url, "_blank", "noopener");
     });
 
     corps.appendChild(tr);
@@ -276,6 +287,46 @@ document.getElementById("fic").addEventListener("change", function(e){
 });
 
 dessiner();
+</script>
+
+<div id="toast" role="status" aria-live="polite"></div>
+<script>
+(function(){
+  "use strict";
+  /* Le nom du PDF est mis dans le presse-papiers des que le collaborateur
+     ouvre un arrete : la boite « Enregistrer » de Chrome ne propose que le
+     titre de la page distante, il suffit de faire Ctrl+A puis Ctrl+V. */
+  function toast(html, rate){
+    var t = document.getElementById("toast");
+    t.innerHTML = html; t.className = rate ? "rate" : ""; t.style.display = "block";
+    clearTimeout(t._t); t._t = setTimeout(function(){ t.style.display = "none"; }, 7000);
+  }
+  function copier(nom){
+    var ok = false;
+    try {
+      var ta = document.createElement("textarea");
+      ta.value = nom; ta.setAttribute("readonly", "");
+      ta.style.position = "fixed"; ta.style.top = "-1000px";
+      document.body.appendChild(ta);
+      ta.select(); ta.setSelectionRange(0, nom.length);
+      ok = document.execCommand("copy");
+      ta.remove();
+    } catch (e) { ok = false; }
+    if (!ok && navigator.clipboard) {
+      try { navigator.clipboard.writeText(nom); ok = true; } catch (e) {}
+    }
+    return ok;
+  }
+  document.addEventListener("click", function(e){
+    var cible = e.target.closest("[data-ouvrir], [data-copier], .fich");
+    if (!cible) return;
+    var ligne = cible.closest("tr"); if (!ligne) return;
+    var span = ligne.querySelector(".fich"); if (!span) return;
+    var nom = span.textContent.trim(); if (!nom) return;
+    if (copier(nom)) toast("Nom copi\u00e9 : <code>" + nom + "</code><br>Dans la bo\u00eete \u00ab Enregistrer \u00bb : <b>Ctrl+A</b> puis <b>Ctrl+V</b>.");
+    else toast("Copie impossible \u2014 nom \u00e0 saisir : <code>" + nom + "</code>", true);
+  }, true);
+})();
 </script>
 </body>
 </html>
