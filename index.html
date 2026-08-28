@@ -207,6 +207,7 @@ tbody tr:nth-child(even){background:#FAFBFC}
 <div class="wrap" id="sheets"></div>
 
 <script src="xylo-moteur.js"></script>
+<script src="arretes-map.js"></script>
 <script>
 "use strict";
 
@@ -712,10 +713,19 @@ document.getElementById("btnArr").addEventListener("click", function(){
               pageGarde(doc, polices[0], polices[1], it, 0, "plafond du dossier atteint (20 Mo)");
               return;
             }
-            var voie = /^https?:/i.test(it.url)
+            /* Le fonds des 189 arrêtés est servi par le site lui-même (PDF à la
+               racine). On joint d'abord ce document vérifié ; le relais Box ne
+               sert plus que de secours pour une pièce absente du fonds. */
+            var cle = (it.url || "").trim();
+            var local = (typeof XYLO_FICHIERS !== "undefined" && XYLO_FICHIERS[cle])
+              ? encodeURIComponent(XYLO_FICHIERS[cle]) : null;
+            var relais = /^https?:/i.test(it.url)
               ? "api/arrete?u=" + encodeURIComponent(it.url)
               : it.url;
-            return fetch(voie)
+            return (local
+              ? fetch(local).then(function(r){ return r.ok ? r : fetch(relais); })
+                            .catch(function(){ return fetch(relais); })
+              : fetch(relais))
             .then(function(r){
               if(!r.ok){
                 return r.json().catch(function(){ return {}; }).then(function(j){
