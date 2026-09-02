@@ -2,6 +2,12 @@
 
 Écrit automatiquement par `/api/veille`. Le plus récent en tête.
 
+## 02/09/2026 — aucun écart
+
+Moisson en 13.9 s · 25 départements, 8797 communes classées · 32 valeur(s) non arbitrée(s).
+
+Rien à signaler.
+
 ## 01/09/2026 — aucun écart
 
 Moisson en 16.6 s · 25 départements, 8797 communes classées · 32 valeur(s) non arbitrée(s).
